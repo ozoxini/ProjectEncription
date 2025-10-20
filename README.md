@@ -46,7 +46,6 @@ pip install PyQt5==5.15.9
 ### Błąd: "Python not found"
 ```bash
 # Zainstaluj Python z https://python.org
-# Upewnij się, że Python jest w PATH
 python --version
 ```
 
@@ -66,7 +65,7 @@ ProjectEncription/
     └── ui/                   # Interfejs użytkownika
 ```
 
-## 🎯 Pierwsze Uruchomienie
+##  Pierwsze Uruchomienie
 
 1. **Uruchom aplikację:**
    ```bash

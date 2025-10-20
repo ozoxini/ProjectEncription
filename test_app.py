@@ -7,8 +7,27 @@ import sys
 import os
 sys.path.append('.')
 
+from src.crypto import vigenere_cipher
 from src.crypto.algorithm_manager import AlgorithmManager
 from src.crypto.caesar_cipher import CaesarCipher
+from src.crypto.vigenere_cipher import VigenereCipher
+
+def test_vigenere_cipher():
+    print("== Test szyfru Vinegrette ==")
+
+    cipher = VigenereCipher()
+    print(f"Algorytm: {cipher.name}")
+    print(f"Opis: {cipher.description}")
+
+    test_cases = [
+        ("Siemka", tajne),
+        ("Test szyfrowania", 'kaczka'),
+        {"Pozdrawiam", 'polecanko'},
+    ]
+
+    for text, key in test_cases:
+        print(f"\nTekst: '{text}'")
+        print(f"\nKlucz: '{key}'")
 
 def test_caesar_cipher():
     """Testuje szyfr Cezara"""

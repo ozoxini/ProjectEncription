@@ -1,6 +1,7 @@
 from typing import Dict, List, Type, Optional
 from .base_algorithm import BaseCryptoAlgorithm
 from .caesar_cipher import CaesarCipher
+from .vigenere_cipher import VigenereCipher
 
 
 class AlgorithmManager:
@@ -10,6 +11,7 @@ class AlgorithmManager:
     
     def _register_default_algorithms(self):
         self.register_algorithm(CaesarCipher())
+        self.register_algorithm(VigenereCipher())
     
     def register_algorithm(self, algorithm: BaseCryptoAlgorithm):
         self._algorithms[algorithm.name] = algorithm

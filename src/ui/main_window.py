@@ -2,6 +2,7 @@
 Główne okno aplikacji kryptograficznej
 """
 
+from tkinter import EW
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QStackedWidget, QLabel, QPushButton, QTextEdit, 
                             QLineEdit, QComboBox, QSpinBox, QFileDialog, 
@@ -108,10 +109,30 @@ class MainWindow(QMainWindow):
         self.algorithm_combo.currentTextChanged.connect(self.on_algorithm_changed)
         control_layout.addRow("Algorytm:", self.algorithm_combo)
         
-        self.key_input = QSpinBox()
-        self.key_input.setRange(-25, 25)
-        self.key_input.setValue(3)
-        control_layout.addRow("Klucz:", self.key_input)
+        # ZAMIANA: zamiast pojedynczego QSpinBox udostępniamy stos (spin/text)
+        self.key_spin = QSpinBox()
+        self.key_spin.setRange(-25, 25)
+        self.key_spin.setValue(3)
+        spin_container = QWidget()
+        spin_layout = QHBoxLayout(spin_container)
+        spin_layout.setContentsMargins(0, 0, 0, 0)
+        spin_layout.addWidget(self.key_spin)
+
+        self.key_text = QLineEdit()
+        self.key_text.setPlaceholderText("Wpisz klucz tekstowy...")
+        text_container = QWidget()
+        text_layout = QHBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.addWidget(self.key_text)
+
+        self.key_stack = QStackedWidget()
+        self.key_stack.addWidget(spin_container)   # index 0 -> numeric
+        self.key_stack.addWidget(text_container)   # index 1 -> text
+
+        control_layout.addRow("Klucz:", self.key_stack)
+        ##self.key_input = QTextEdit()
+        ##control_layout.addRow("Klucz:", self.input_text)
+
         layout.addWidget(control_card)
 
         # Karta z polami tekstowymi
@@ -160,12 +181,31 @@ class MainWindow(QMainWindow):
         
         self.file_algorithm_combo = QComboBox()
         self.populate_file_algorithms()
+        # podłączamy także zmianę wyboru w combo plików do tej samej metody
+        self.file_algorithm_combo.currentTextChanged.connect(self.on_algorithm_changed)
         settings_layout.addRow("Algorytm:", self.file_algorithm_combo)
         
-        self.file_key_input = QSpinBox()
-        self.file_key_input.setRange(-25, 25)
-        self.file_key_input.setValue(3)
-        settings_layout.addRow("Klucz:", self.file_key_input)
+        # ZAMIANA podobnie jak w widoku tekstowym: stack dla klucza plikowego
+        self.file_key_spin = QSpinBox()
+        self.file_key_spin.setRange(-25, 25)
+        self.file_key_spin.setValue(3)
+        fspin_container = QWidget()
+        fspin_layout = QHBoxLayout(fspin_container)
+        fspin_layout.setContentsMargins(0, 0, 0, 0)
+        fspin_layout.addWidget(self.file_key_spin)
+
+        self.file_key_text = QLineEdit()
+        self.file_key_text.setPlaceholderText("Wpisz klucz tekstowy...")
+        ftext_container = QWidget()
+        ftext_layout = QHBoxLayout(ftext_container)
+        ftext_layout.setContentsMargins(0, 0, 0, 0)
+        ftext_layout.addWidget(self.file_key_text)
+
+        self.file_key_stack = QStackedWidget()
+        self.file_key_stack.addWidget(fspin_container)   # index 0 -> numeric
+        self.file_key_stack.addWidget(ftext_container)   # index 1 -> text
+
+        settings_layout.addRow("Klucz:", self.file_key_stack)
         layout.addWidget(settings_card)
         
         # Karta operacji na pliku
@@ -322,13 +362,44 @@ class MainWindow(QMainWindow):
     
     def on_algorithm_changed(self, name):
         self.current_algorithm = self.algorithm_manager.get_algorithm(name)
-        if self.current_algorithm:
-            self.statusBar().showMessage(f"Aktywny: {name}")
+        if not self.current_algorithm:
+            return
+
+        # najpierw sprawdź, czy algorytm akceptuje klucz liczbowy (spin)
+        prefers_numeric = False
+        try:
+            if self.current_algorithm.validate_key(self.key_spin.value()):
+                prefers_numeric = True
+        except Exception:
+            prefers_numeric = False
+
+        # jeśli nie, spróbuj sprawdzić klucz tekstowy (najpierw aktualne pole, potem przykładowy string)
+        if not prefers_numeric:
+            try:
+                if self.current_algorithm.validate_key(self.key_text.text()):
+                    prefers_numeric = False
+                elif self.current_algorithm.validate_key("K"):  # próbka tekstowa
+                    prefers_numeric = False
+                else:
+                    # nie rozpoznano jako tekstowy — domyślnie pozostaw numeric (bez zmiany)
+                    prefers_numeric = False
+            except Exception:
+                # w razie błędu w validate_key nie zmieniamy preferencji wcześniej wykrytej
+                pass
+
+        # ustawiamy widoczność dla obu widoków (tekst i plik)
+        if hasattr(self, 'key_stack'):
+            self.key_stack.setCurrentIndex(0 if prefers_numeric else 1)
+        if hasattr(self, 'file_key_stack'):
+            self.file_key_stack.setCurrentIndex(0 if prefers_numeric else 1)
+
+        self.statusBar().showMessage(f"Aktywny: {name}")
     
     def encrypt_text(self):
         if not self._validate_text_input(): return
         try:
-            encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), self.key_input.value())
+            key = self._get_text_key()
+            encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key)
             self.output_text.setPlainText(encrypted)
             self.statusBar().showMessage("Zaszyfrowano!")
         except Exception as e:
@@ -337,7 +408,8 @@ class MainWindow(QMainWindow):
     def decrypt_text(self):
         if not self._validate_text_input(): return
         try:
-            decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), self.key_input.value())
+            key = self._get_text_key()
+            decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), key)
             self.input_text.clear()
             self.output_text.setPlainText(decrypted)
             self.statusBar().showMessage("Deszyfrowano!")
@@ -360,7 +432,8 @@ class MainWindow(QMainWindow):
         try:
             with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                 content = f.read()
-            encrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).encrypt(content, self.file_key_input.value())
+            key = self._get_file_key()
+            encrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).encrypt(content, key)
             with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                 f.write(encrypted)
             QMessageBox.information(self, "Sukces", "Plik zaszyfrowany!")
@@ -373,7 +446,8 @@ class MainWindow(QMainWindow):
         try:
             with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                 content = f.read()
-            decrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).decrypt(content, self.file_key_input.value())
+            key = self._get_file_key()
+            decrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).decrypt(content, key)
             with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                 f.write(decrypted)
             QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")
@@ -388,7 +462,12 @@ class MainWindow(QMainWindow):
         if not self.input_text.toPlainText():
             QMessageBox.warning(self, "Błąd", "Wprowadź tekst!")
             return False
-        if not self.current_algorithm.validate_key(self.key_input.value()):
+        key = self._get_text_key()
+        try:
+            if not self.current_algorithm.validate_key(key):
+                QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
+                return False
+        except Exception:
             QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
             return False
         return True
@@ -401,7 +480,23 @@ class MainWindow(QMainWindow):
         if not self.file_path_input.text():
             QMessageBox.warning(self, "Błąd", "Wybierz plik!")
             return False
-        if not alg.validate_key(self.file_key_input.value()):
+        key = self._get_file_key()
+        try:
+            if not alg.validate_key(key):
+                QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
+                return False
+        except Exception:
             QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
             return False
         return True
+
+    # pomocnicze metody do pobierania aktualnego klucza
+    def _get_text_key(self):
+        if hasattr(self, 'key_stack') and self.key_stack.currentIndex() == 0:
+            return self.key_spin.value()
+        return self.key_text.text()
+
+    def _get_file_key(self):
+        if hasattr(self, 'file_key_stack') and self.file_key_stack.currentIndex() == 0:
+            return self.file_key_spin.value()
+        return self.file_key_text.text()

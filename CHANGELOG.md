@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.2] - 21.10.2025
+
+- **Klucz biezący** - implementacja running key dla dwóch szyfrów: Vignere'a, oraz Beaufort'a
+
+## [1.0.1] - 20.10.2025
+
+### Dodano
+
+- **Szyfr Beaufort'a** - dodanie nowego szyfru
+- **Szyfr Vignere'a** - dodanie nowego szyfru
+
 ## [1.0.0] - 13.10.2025
 
 ### Dodano
@@ -8,6 +19,7 @@
 - **Szyfrowanie plików** - mo
 - **Szyfr Cezara** - implementacja z obsługą polskich znaków
 - **Walidacja** - sprawdzanie kluczy i danych wejściowych
+- **Menadzer szyfrów** - prosta funkcja ułatwiająca implementowanie nowych metod szyfrowania
 
 ## [0.1.0] - 07.10.2025
 

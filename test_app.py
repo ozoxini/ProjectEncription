@@ -19,15 +19,29 @@ def test_vigenere_cipher():
     print(f"Algorytm: {cipher.name}")
     print(f"Opis: {cipher.description}")
 
+    # Poprawione przypadki testowe: pary (tekst, klucz)
     test_cases = [
-        ("Siemka", tajne),
+        ("Siemka", 'tajne'),
         ("Test szyfrowania", 'kaczka'),
-        {"Pozdrawiam", 'polecanko'},
+        ("Pozdrawiam", 'polecanko'),
     ]
 
     for text, key in test_cases:
         print(f"\nTekst: '{text}'")
-        print(f"\nKlucz: '{key}'")
+        print(f"Klucz: '{key}'")
+
+        if not cipher.validate_key(key):
+            print(f"❌ Nieprawidłowy klucz: {key}")
+            continue
+
+        encrypted = cipher.encrypt(text, key)
+        print(f"Zaszyfrowany: '{encrypted}'")
+
+        decrypted = cipher.decrypt(encrypted, key)
+        print(f"Deszyfrowany: '{decrypted}'")
+
+        success = ''.join(filter(str.isalpha, text.upper())) == decrypted
+        print(f"✅ Poprawność: {success}")
 
 def test_caesar_cipher():
     """Testuje szyfr Cezara"""
@@ -108,6 +122,8 @@ def test_file_operations():
         # Test szyfrowania pliku
         manager = AlgorithmManager()
         algorithm = manager.get_algorithm("Szyfr Cezara")
+        if algorithm is None:
+            raise RuntimeError("Algorytm 'Szyfr Cezara' nie jest dostępny w menedżerze.")
         key = 7
         
         # Szyfrowanie

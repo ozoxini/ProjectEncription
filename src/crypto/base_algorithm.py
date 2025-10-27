@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-
 class BaseCryptoAlgorithm(ABC):
     
     def __init__(self, name: str, description: str):
@@ -9,11 +8,11 @@ class BaseCryptoAlgorithm(ABC):
         self.description = description
     
     @abstractmethod
-    def encrypt(self, data: str, key: Any) -> str:
+    def encrypt(self, data: bytes, key: Any) -> bytes:
         pass
     
     @abstractmethod
-    def decrypt(self, data: str, key: Any) -> str:
+    def decrypt(self, data: bytes, key: Any) -> bytes:
         pass
     
     @abstractmethod

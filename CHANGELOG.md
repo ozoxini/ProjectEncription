@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.5] - 28.10.2025
+
+- **SzyfrAES** - poprawienie działanie szyfru, (program nie zapisuje hasła, w celu deszyforwania nalezy podać poprawny klucz)
+
+## [1.0.4] - 27.10.2025
+
+- **SzyfrAES** - implementacja uproszczonej wersji szyfru AES
+
+## [1.0.3] - 23.10.2025
+
+### Dodano
+
+- **SzkieletAES** - przygotwanie szkieletu algorytmu szyforwania AES
+
 ## [1.0.2] - 21.10.2025
 
 - **Klucz biezący** - implementacja running key dla dwóch szyfrów: Vignere'a, oraz Beaufort'a

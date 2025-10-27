@@ -3,6 +3,7 @@ from .base_algorithm import BaseCryptoAlgorithm
 from .caesar_cipher import CaesarCipher
 from .vigenere_cipher import VigenereCipher
 from .beaufort_cipher import BeaufortCipher
+from .aes_cipher import AesCipher
 
 
 class AlgorithmManager:
@@ -14,6 +15,7 @@ class AlgorithmManager:
         self.register_algorithm(CaesarCipher())
         self.register_algorithm(VigenereCipher())
         self.register_algorithm(BeaufortCipher())   
+        self.register_algorithm(AesCipher())
     
     def register_algorithm(self, algorithm: BaseCryptoAlgorithm):
         self._algorithms[algorithm.name] = algorithm

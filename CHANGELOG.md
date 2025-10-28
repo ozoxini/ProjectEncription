@@ -2,19 +2,21 @@
 
 ## [1.0.5] - 28.10.2025
 
-- **SzyfrAES** - poprawienie działanie szyfru, (program nie zapisuje hasła, w celu deszyforwania nalezy podać poprawny klucz)
+- **Szyfr AES** - poprawienie działanie szyfru, (program nie zapisuje hasła, w celu deszyforwania nalezy podać poprawny klucz)
 
 ## [1.0.4] - 27.10.2025
 
-- **SzyfrAES** - implementacja uproszczonej wersji szyfru AES
+### Dodano
+
+- **Szyfr AES** - implementacja uproszczonej wersji szyfru AES
 
 ## [1.0.3] - 23.10.2025
 
-### Dodano
-
-- **SzkieletAES** - przygotwanie szkieletu algorytmu szyforwania AES
+- **Szyfr AES** - przygotwanie szkieletu algorytmu szyfrowania AES
 
 ## [1.0.2] - 21.10.2025
+
+### Dodano
 
 - **Klucz biezący** - implementacja running key dla dwóch szyfrów: Vignere'a, oraz Beaufort'a
 
@@ -30,7 +32,7 @@
 ### Dodano
 - **Aplikacja GUI** - interfejs PyQt5
 - **Szyfrowanie tekstu** - szyfrowanie i deszyfrowanie z poziomu aplikacji
-- **Szyfrowanie plików** - mo
+- **Szyfrowanie plików** - mozliwość szyfrowania plików w ktorych znajduje się tekst
 - **Szyfr Cezara** - implementacja z obsługą polskich znaków
 - **Walidacja** - sprawdzanie kluczy i danych wejściowych
 - **Menadzer szyfrów** - prosta funkcja ułatwiająca implementowanie nowych metod szyfrowania

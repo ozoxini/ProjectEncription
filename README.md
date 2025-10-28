@@ -53,13 +53,11 @@ python --version
 
 ```
 ProjectEncription/
-├── main.py                    # Główny plik aplikacji
-├── requirements.txt           # Zależności Python
-├── README.md                 # Dokumentacja
+├── main.py                   # Główny plik programu
+├── requirements.txt          # Wymagania aplikacji
+├── README.md                 # Ta instrukcja
 ├── CHANGELOG.md              # Historia zmian
-├── LICENSE                   # Licencja MIT
-├── INSTALL.md                # Ta instrukcja
-├── test_app.py              # Testy aplikacji
+├── test_app.py               # Testy aplikacji
 └── src/
     ├── crypto/               # Moduł 
     └── ui/                   # Interfejs użytkownika
@@ -83,14 +81,13 @@ ProjectEncription/
    - Wybierz zakładkę "Plik"
    - Stwórz plik testowy
    - Wybierz plik i zaszyfruj
-   - Sprawdź czy plik został zmieniony
+   - Sprawdź treść pliku została zaszyfrowana
 
 ## Architektura
 
 Aplikacja została zaprojektowana z myślą o łatwym dodawaniu nowych algorytmów:
 
 - `src/crypto/base_algorithm.py` - Bazowa klasa dla algorytmów
-- `src/crypto/caesar_cipher.py` - Implementacja szyfru Cezara
 - `src/crypto/algorithm_manager.py` - Menedżer algorytmów
 - `src/ui/main_window.py` - Interfejs użytkownika
 

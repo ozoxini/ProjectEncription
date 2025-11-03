@@ -4,6 +4,7 @@ from .caesar_cipher import CaesarCipher
 from .vigenere_cipher import VigenereCipher
 from .beaufort_cipher import BeaufortCipher
 from .aes_cipher import AesCipher
+from .chacha20_cipher import ChaCha20Cipher
 
 
 class AlgorithmManager:
@@ -16,6 +17,7 @@ class AlgorithmManager:
         self.register_algorithm(VigenereCipher())
         self.register_algorithm(BeaufortCipher())   
         self.register_algorithm(AesCipher())
+        self.register_algorithm(ChaCha20Cipher())
     
     def register_algorithm(self, algorithm: BaseCryptoAlgorithm):
         self._algorithms[algorithm.name] = algorithm

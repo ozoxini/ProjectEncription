@@ -201,9 +201,11 @@ class MainWindow(QMainWindow):
         ftext_layout.setContentsMargins(0, 0, 0, 0)
         ftext_layout.addWidget(self.file_key_text)
 
+
         self.file_key_stack = QStackedWidget()
-        self.file_key_stack.addWidget(fspin_container)   # index 0 -> numeric
-        self.file_key_stack.addWidget(ftext_container)   # index 1 -> text
+        self.file_key_stack.addWidget(fspin_container)
+        self.file_key_stack.addWidget(ftext_container)
+
 
         settings_layout.addRow("Klucz:", self.file_key_stack)
         layout.addWidget(settings_card)
@@ -236,6 +238,8 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(file_card)
         
+        layout.addStretch(1)
+
         return view
 
     def apply_studio_style(self):

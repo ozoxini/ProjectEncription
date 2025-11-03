@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1] - 03.11.2025
+
+- **Szyfr AES ECB** - "poprawna" implementacja szyfru AES w trybie ECB
+
 ## [1.0.5] - 28.10.2025
 
 - **Szyfr AES** - poprawienie działanie szyfru, (program nie zapisuje hasła, w celu deszyforwania nalezy podać poprawny klucz)

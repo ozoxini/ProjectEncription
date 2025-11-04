@@ -80,6 +80,9 @@ class MainWindow(QMainWindow):
         
         # Pasek statusu
         self.statusBar().showMessage("Gotowy")
+        version_label = QLabel("v.1.1.5")
+        version_label.setObjectName("versionLabel")
+        self.statusBar().addPermanentWidget(version_label)
         
         # Ustawienie stanu początkowego
         self.switch_view(0)
@@ -100,7 +103,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 20, 0, 0)
         
         # Karta z ustawieniami
-        control_card = QGroupBox("Ustawienia")
+        control_card = QGroupBox()
         control_layout = QFormLayout(control_card)
         control_layout.setSpacing(15)
         
@@ -136,7 +139,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(control_card)
 
         # Karta z polami tekstowymi
-        text_card = QGroupBox("Edytor")
+        text_card = QGroupBox()
         text_layout = QVBoxLayout(text_card)
         text_layout.setSpacing(15)
         
@@ -175,7 +178,7 @@ class MainWindow(QMainWindow):
         layout.setAlignment(Qt.AlignTop)
 
         # Karta z ustawieniami
-        settings_card = QGroupBox("Ustawienia")
+        settings_card = QGroupBox()
         settings_layout = QFormLayout(settings_card)
         settings_layout.setSpacing(15)
         
@@ -211,7 +214,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(settings_card)
         
         # Karta operacji na pliku
-        file_card = QGroupBox("Plik")
+        file_card = QGroupBox()
         file_layout = QVBoxLayout(file_card)
         file_layout.setSpacing(15)
         
@@ -262,6 +265,10 @@ class MainWindow(QMainWindow):
                 font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
                 font-size: 11pt;
             }}
+            QLabel {{
+                background-color: transparent;
+                padding-top: 8px;
+            }}
             #mainTitle {{
                 font-size: 30pt;
                 font-weight: 600;
@@ -295,7 +302,7 @@ class MainWindow(QMainWindow):
             #segmentedButtonRight {{
                 border-top-right-radius: 8px;
                 border-bottom-right-radius: 8px;
-                border-left: none;
+                margin-left: 3px;
             }}
             #segmentedButtonLeft:checked, #segmentedButtonRight:checked {{
                 background-color: {INPUT_COLOR};
@@ -352,6 +359,11 @@ class MainWindow(QMainWindow):
             QStatusBar {{
                 font-size: 10pt;
                 color: {TEXT_SECONDARY};
+            }}
+            #versionLabel {{
+                color: {TEXT_SECONDARY};
+                font-size: 9pt;
+                padding-top: 0px;
             }}
         """)
 

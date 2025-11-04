@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.5] - 04.11.2025
+
+- **AES - CBC, CTR, GCM** - Dodanie nowych trybów szyforwania
+- **Poprawki UI** - Wprowadzenie małych ulepszeń w interfejsie
+
 ## [1.1] - 03.11.2025
 
 - **Szyfr AES ECB** - "poprawna" implementacja szyfru AES w trybie ECB

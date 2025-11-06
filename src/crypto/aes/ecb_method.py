@@ -6,21 +6,19 @@ class EcbMethod(BaseCryptoAlgorithm):
 
     def __init__(self):
         super().__init__(
-            name="AES-128 (ECB)",
+            name="AES (ECB)",
             description="Standardowy AES w niebezpiecznym trybie ECB."
         )
-        # Tworzymy instancję naszego silnika
-        self.core = AESCore()
-        self.block_size = self.core.block_size
+        self.block_size = 16
 
     def validate_key(self, key: Any) -> bool:
         """Klucz musi być tekstem (str) i nie może być pusty."""
         return isinstance(key, str) and len(key) > 0
 
-    def _prepare_key(self, key_str: str) -> bytes:
-        """Konwertuje klucz (str) na bajty i przycina/dopełnia do 16 bajtów."""
+    def _prepare_key(self, key_str: str, key_size: int) -> bytes:
+        """Konwertuje klucz (str) na bajty i przycina/dopełnia do wymaganego rozmiaru."""
         key_bytes = key_str.encode('utf-8')
-        return key_bytes.ljust(self.core.key_size, b'\x00')[:self.core.key_size]
+        return key_bytes.ljust(key_size, b'\x00')[:key_size]
 
     # --- Padding (PKCS#7) ---
     def _pad(self, dane: bytes) -> bytes:
@@ -41,9 +39,12 @@ class EcbMethod(BaseCryptoAlgorithm):
             raise ValueError("Błędne bajty dopełnienia")
         return dane[:-ilosc_dopelnienia]
 
-    def encrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def encrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+
+        key_size = options.get('key_size', 16)
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -55,8 +56,8 @@ class EcbMethod(BaseCryptoAlgorithm):
             raise TypeError("Dane muszą być typu str lub bytes")
 
         try:
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes) # <-- Użyj silnika
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             
             padded_data = self._pad(data_bytes)
             encrypted_bytes = b''
@@ -64,7 +65,7 @@ class EcbMethod(BaseCryptoAlgorithm):
             # Logika ECB: szyfruj blok po bloku, niezależnie
             for i in range(0, len(padded_data), self.block_size):
                 blok = padded_data[i : i + self.block_size]
-                encrypted_bytes += self.core.encrypt_block(blok, expanded_key) 
+                encrypted_bytes += core.encrypt_block(blok, expanded_key) 
         except Exception as e:
             raise RuntimeError(f"Błąd szyfrowania ECB: {e}")
 
@@ -72,9 +73,12 @@ class EcbMethod(BaseCryptoAlgorithm):
             return base64.b64encode(encrypted_bytes).decode('utf-8')
         return encrypted_bytes
 
-    def decrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def decrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+
+        key_size = options.get('key_size', 16)
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -92,15 +96,15 @@ class EcbMethod(BaseCryptoAlgorithm):
             raise ValueError("Dane szyfrogramu mają nieprawidłową długość.")
 
         try:
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes) # <-- Użyj silnika
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             
             decrypted_padded_bytes = b''
 
             # Logika ECB: deszyfruj blok po bloku, niezależnie
             for i in range(0, len(enc_bytes), self.block_size):
                 blok = enc_bytes[i : i + self.block_size]
-                decrypted_padded_bytes += self.core.decrypt_block(blok, expanded_key)
+                decrypted_padded_bytes += core.decrypt_block(blok, expanded_key)
 
             decrypted_bytes = self._unpad(decrypted_padded_bytes)
         except ValueError as e:

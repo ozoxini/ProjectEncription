@@ -41,11 +41,10 @@ class GcmMethod(BaseCryptoAlgorithm):
     """
     def __init__(self):
         super().__init__(
-            name="AES-128 (GCM)",
+            name="AES (GCM)",
             description="AES w trybie AEAD (uwierzytelnianie + szyfrowanie)."
         )
-        self.core = AESCore()
-        self.block_size = self.core.block_size # 16 bajtów
+        self.block_size = 16 # 16 bajtów
         self.tag_size = 16 # Standardowy tag GCM ma 16 bajtów
         self.nonce_size = 12 # Standardowy nonce GCM ma 12 bajtów
 
@@ -53,9 +52,9 @@ class GcmMethod(BaseCryptoAlgorithm):
     def validate_key(self, key: Any) -> bool:
         return isinstance(key, str) and len(key) > 0
 
-    def _prepare_key(self, key_str: str) -> bytes:
+    def _prepare_key(self, key_str: str, key_size: int) -> bytes:
         key_bytes = key_str.encode('utf-8')
-        return key_bytes.ljust(self.core.key_size, b'\x00')[:self.core.key_size]
+        return key_bytes.ljust(key_size, b'\x00')[:key_size]
 
     # --- Tryb GCM (oparty na CTR) nie używa Paddingu! ---
 
@@ -112,7 +111,7 @@ class GcmMethod(BaseCryptoAlgorithm):
             
         return _int_to_bytes(current_hash_int)
 
-    def _ctr_xor_operation(self, data: bytes, expanded_key: list[list[int]], J0: bytes) -> bytes:
+    def _ctr_xor_operation(self, core: AESCore, data: bytes, expanded_key: list[list[int]], J0: bytes) -> bytes:
         """
         Logika szyfrowania trybu CTR, ale startująca od licznika J0.
         """
@@ -128,16 +127,19 @@ class GcmMethod(BaseCryptoAlgorithm):
             counter_block = _int_to_bytes(counter_int)
             
             # Zaszyfruj blok licznika, aby otrzymać "bełkot"
-            keystream = self.core.encrypt_block(counter_block, expanded_key)
+            keystream = core.encrypt_block(counter_block, expanded_key)
             
             chunk = data[i : i + self.block_size]
             output += xor_bytes(chunk, keystream)
             
         return output
 
-    def encrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def encrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+
+        key_size = options.get('key_size', 16)
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -150,12 +152,12 @@ class GcmMethod(BaseCryptoAlgorithm):
 
         try:
             # --- Przygotowanie ---
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes)
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             
             # 1. Wygeneruj klucz H dla GHASH
             # H = E_k(0^128)
-            H_bytes = self.core.encrypt_block(b'\x00' * 16, expanded_key)
+            H_bytes = core.encrypt_block(b'\x00' * 16, expanded_key)
             H_int = _bytes_to_int(H_bytes)
             
             # 2. Wygeneruj losowy 12-bajtowy Nonce
@@ -166,7 +168,7 @@ class GcmMethod(BaseCryptoAlgorithm):
             J0 = nonce + b'\x00\x00\x00\x01'
             
             # 4. Szyfrowanie (Tryb CTR)
-            ciphertext = self._ctr_xor_operation(data_bytes, expanded_key, J0)
+            ciphertext = self._ctr_xor_operation(core, data_bytes, expanded_key, J0)
             
             # 5. Obliczanie Tagu (GHASH)
             # AAD (Associated Data) jest puste w naszej implementacji
@@ -174,7 +176,7 @@ class GcmMethod(BaseCryptoAlgorithm):
             ghash = self._ghash_calculate(H_int, aad, ciphertext)
             
             # 6. Zaszyfruj J0
-            S0 = self.core.encrypt_block(J0, expanded_key)
+            S0 = core.encrypt_block(J0, expanded_key)
             
             # 7. Tag T = GHASH ⊕ S0
             tag = xor_bytes(ghash, S0)[:self.tag_size]
@@ -189,9 +191,12 @@ class GcmMethod(BaseCryptoAlgorithm):
             return base64.b64encode(final_output_bytes).decode('utf-8')
         return final_output_bytes
 
-    def decrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def decrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+
+        key_size = options.get('key_size', 16)
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -211,11 +216,11 @@ class GcmMethod(BaseCryptoAlgorithm):
 
         try:
             # --- Przygotowanie ---
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes)
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             
             # 1. Wygeneruj klucz H dla GHASH
-            H_bytes = self.core.encrypt_block(b'\x00' * 16, expanded_key)
+            H_bytes = core.encrypt_block(b'\x00' * 16, expanded_key)
             H_int = _bytes_to_int(H_bytes)
             
             # 2. Wyodrębnij komponenty
@@ -229,7 +234,7 @@ class GcmMethod(BaseCryptoAlgorithm):
             # 4. Oblicz oczekiwany Tag (GHASH)
             aad = b''
             ghash = self._ghash_calculate(H_int, aad, ciphertext)
-            S0 = self.core.encrypt_block(J0, expanded_key)
+            S0 = core.encrypt_block(J0, expanded_key)
             expected_tag = xor_bytes(ghash, S0)[:self.tag_size]
             
             # 5. Weryfikacja Tagu (Kluczowy krok!)
@@ -237,7 +242,7 @@ class GcmMethod(BaseCryptoAlgorithm):
                 raise ValueError("Błąd uwierzytelniania! Dane są uszkodzone lub klucz jest zły.")
                 
             # 6. Deszyfrowanie (Tryb CTR) - tylko jeśli tag jest poprawny
-            decrypted_bytes = self._ctr_xor_operation(ciphertext, expanded_key, J0)
+            decrypted_bytes = self._ctr_xor_operation(core, ciphertext, expanded_key, J0)
 
         except ValueError as e:
             # Przekaż błąd (np. "Błąd uwierzytelniania!")

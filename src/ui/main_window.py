@@ -111,6 +111,14 @@ class MainWindow(QMainWindow):
         self.populate_algorithms()
         self.algorithm_combo.currentTextChanged.connect(self.on_algorithm_changed)
         control_layout.addRow("Algorytm:", self.algorithm_combo)
+
+        # Dodajemy ComboBox dla rozmiaru klucza AES, początkowo ukryty
+        self.aes_key_size_combo = QComboBox()
+        self.aes_key_size_combo.addItems(["AES-128 (16 bajtów)", "AES-192 (24 bajty)", "AES-256 (32 bajty)"])
+        self.aes_key_size_label = QLabel("Rozmiar klucza AES:")
+        control_layout.addRow(self.aes_key_size_label, self.aes_key_size_combo)
+        self.aes_key_size_label.hide()
+        self.aes_key_size_combo.hide()
         
         # ZAMIANA: zamiast pojedynczego QSpinBox udostępniamy stos (spin/text)
         self.key_spin = QSpinBox()
@@ -187,6 +195,14 @@ class MainWindow(QMainWindow):
         # podłączamy także zmianę wyboru w combo plików do tej samej metody
         self.file_algorithm_combo.currentTextChanged.connect(self.on_algorithm_changed)
         settings_layout.addRow("Algorytm:", self.file_algorithm_combo)
+
+        # Dodajemy ComboBox dla rozmiaru klucza AES w widoku pliku
+        self.file_aes_key_size_combo = QComboBox()
+        self.file_aes_key_size_combo.addItems(["AES-128 (16 bajtów)", "AES-192 (24 bajty)", "AES-256 (32 bajty)"])
+        self.file_aes_key_size_label = QLabel("Rozmiar klucza AES:")
+        settings_layout.addRow(self.file_aes_key_size_label, self.file_aes_key_size_combo)
+        self.file_aes_key_size_label.hide()
+        self.file_aes_key_size_combo.hide()
         
         # ZAMIANA podobnie jak w widoku tekstowym: stack dla klucza plikowego
         self.file_key_spin = QSpinBox()
@@ -409,13 +425,29 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'file_key_stack'):
             self.file_key_stack.setCurrentIndex(0 if prefers_numeric else 1)
 
+        # Pokaż/ukryj wybór rozmiaru klucza AES
+        is_aes = "AES" in name
+        if hasattr(self, 'aes_key_size_label'):
+            self.aes_key_size_label.setVisible(is_aes)
+            self.aes_key_size_combo.setVisible(is_aes)
+        if hasattr(self, 'file_aes_key_size_label'):
+            self.file_aes_key_size_label.setVisible(is_aes)
+            self.file_aes_key_size_combo.setVisible(is_aes)
+
         self.statusBar().showMessage(f"Aktywny: {name}")
     
     def encrypt_text(self):
         if not self._validate_text_input(): return
         try:
             key = self._get_text_key()
-            encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key)
+            
+            # Przygotowanie dodatkowych opcji dla algorytmu
+            options = {}
+            if "AES" in self.current_algorithm.name:
+                key_size_str = self.aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                options['key_size'] = int(key_size_str) // 8
+
+            encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key, **options)
             self.output_text.setPlainText(encrypted)
             self.statusBar().showMessage("Zaszyfrowano!")
         except Exception as e:
@@ -425,7 +457,14 @@ class MainWindow(QMainWindow):
         if not self._validate_text_input(): return
         try:
             key = self._get_text_key()
-            decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), key)
+
+            # Przygotowanie dodatkowych opcji dla algorytmu
+            options = {}
+            if "AES" in self.current_algorithm.name:
+                key_size_str = self.aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                options['key_size'] = int(key_size_str) // 8
+
+            decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), key, **options)
             self.input_text.clear()
             self.output_text.setPlainText(decrypted)
             self.statusBar().showMessage("Deszyfrowano!")
@@ -449,7 +488,15 @@ class MainWindow(QMainWindow):
             with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                 content = f.read()
             key = self._get_file_key()
-            encrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).encrypt(content, key)
+            
+            # Przygotowanie dodatkowych opcji dla algorytmu
+            alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
+            options = {}
+            if "AES" in alg.name:
+                key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                options['key_size'] = int(key_size_str) // 8
+
+            encrypted = alg.encrypt(content, key, **options)
             with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                 f.write(encrypted)
             QMessageBox.information(self, "Sukces", "Plik zaszyfrowany!")
@@ -463,7 +510,15 @@ class MainWindow(QMainWindow):
             with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                 content = f.read()
             key = self._get_file_key()
-            decrypted = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText()).decrypt(content, key)
+
+            # Przygotowanie dodatkowych opcji dla algorytmu
+            alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
+            options = {}
+            if "AES" in alg.name:
+                key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                options['key_size'] = int(key_size_str) // 8
+
+            decrypted = alg.decrypt(content, key, **options)
             with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                 f.write(decrypted)
             QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")

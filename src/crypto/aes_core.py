@@ -43,14 +43,25 @@ RCON = (
 
 class AESCore:
     """
-    Wewnętrzny "silnik" AES. 
-    Potrafi tylko zaszyfrować i odszyfrować pojedynczy 16-bajtowy blok.
+    Wewnętrzny "silnik" AES.
+    Potrafi zaszyfrować i odszyfrować pojedynczy 16-bajtowy blok
+    przy użyciu klucza o długości 128, 192 lub 256 bitów.
     Nie wie nic o trybach pracy (ECB, CBC) ani o dopełnianiu (padding).
     """
-    def __init__(self):
+    def __init__(self, key_size: int = 16):
+        if key_size not in [16, 24, 32]:
+            raise ValueError("Nieprawidłowy rozmiar klucza AES. Dopuszczalne wartości: 16, 24, 32 bajty.")
+
         self.block_size = 16  # AES zawsze ma blok 16 bajtów
-        self.key_size = 16    # AES-128 używa klucza 16 bajtów
-        self.num_rounds = 10  # AES-128 ma 10 rund
+        self.key_size = key_size
+
+        # Ustaw liczbę rund na podstawie rozmiaru klucza
+        if self.key_size == 16:
+            self.num_rounds = 10  # AES-128
+        elif self.key_size == 24:
+            self.num_rounds = 12  # AES-192
+        else: # self.key_size == 32
+            self.num_rounds = 14  # AES-256
 
     # --- Funkcje pomocnicze do matematyki w ciele Galois (GF(2^8)) ---
 
@@ -155,28 +166,53 @@ class AESCore:
         return [state[i] ^ round_key[i] for i in range(16)]
 
     # --- Algorytm Rozszerzania Klucza (Key Expansion / Key Schedule) ---
-    
+
     def expand_key(self, key_bytes: bytes) -> list[list[int]]:
-        """Rozszerza 16-bajtowy klucz główny na 11 kluczy rund."""
+        """Rozszerza klucz główny na wymaganą liczbę kluczy rund."""
         if len(key_bytes) != self.key_size:
-            raise ValueError(f"Klucz musi mieć {self.key_size} bajtów.")
-        
+            raise ValueError(f"Klucz musi mieć {self.key_size} bajtów, a ma {len(key_bytes)}.")
+
         key = list(key_bytes)
-        expanded_key = [0] * (self.block_size * (self.num_rounds + 1))
-        expanded_key[:self.key_size] = key
+        # Liczba 32-bitowych słów w kluczu
+        nk = self.key_size // 4
         
-        for i in range(self.key_size, len(expanded_key), 4):
-            temp = expanded_key[i-4 : i]
-            
-            if i % self.key_size == 0:
-                temp = [temp[1], temp[2], temp[3], temp[0]] # RotWord
-                temp = [S_BOX[b] for b in temp]             # SubWord
-                temp[0] ^= RCON[i // self.key_size]        # Rcon
-            
-            for j in range(4):
-                expanded_key[i + j] = expanded_key[i - self.key_size + j] ^ temp[j]
+        # Całkowita liczba 32-bitowych słów w rozszerzonym kluczu
+        expanded_size_words = (self.num_rounds + 1) * (self.block_size // 4)
         
-        return [expanded_key[i : i+16] for i in range(0, len(expanded_key), 16)]
+        # Inicjalizacja rozszerzonego klucza jako listy słów
+        w = [0] * expanded_size_words
+        
+        # Kopiowanie klucza głównego
+        for i in range(nk):
+            w[i] = (key[4*i] << 24) | (key[4*i+1] << 16) | (key[4*i+2] << 8) | key[4*i+3]
+
+        # Generowanie pozostałych słów
+        for i in range(nk, expanded_size_words):
+            temp = w[i-1]
+            if i % nk == 0:
+                # RotWord
+                temp = ((temp << 8) & 0xFFFFFFFF) | ((temp >> 24) & 0xFF)
+                # SubWord i Rcon
+                temp = (S_BOX[(temp >> 24) & 0xFF] << 24) | \
+                       (S_BOX[(temp >> 16) & 0xFF] << 16) | \
+                       (S_BOX[(temp >> 8) & 0xFF] << 8) | \
+                       S_BOX[temp & 0xFF]
+                temp ^= (RCON[i // nk] << 24)
+            # Dodatkowy SubWord dla AES-256
+            elif nk > 6 and i % nk == 4:
+                temp = (S_BOX[(temp >> 24) & 0xFF] << 24) | \
+                       (S_BOX[(temp >> 16) & 0xFF] << 16) | \
+                       (S_BOX[(temp >> 8) & 0xFF] << 8) | \
+                       S_BOX[temp & 0xFF]
+            
+            w[i] = w[i - nk] ^ temp
+
+        # Konwersja z powrotem na listę list bajtów (klucze rund)
+        expanded_key_bytes = []
+        for word in w:
+            expanded_key_bytes.extend(word.to_bytes(4, 'big'))
+            
+        return [expanded_key_bytes[i : i+16] for i in range(0, len(expanded_key_bytes), 16)]
 
     # --- Główne funkcje szyfrowania i deszyfrowania bloku ---
 

@@ -15,19 +15,19 @@ class CbcMethod(BaseCryptoAlgorithm):
     """
     def __init__(self):
         super().__init__(
-            name="AES-128 (CBC)",
+            name="AES (CBC)",
             description="Standardowy AES w bezpiecznym trybie CBC."
         )
-        self.core = AESCore()
-        self.block_size = self.core.block_size
+        # Usunięcie self.core z init - będzie tworzony dynamicznie
+        self.block_size = 16 # AES zawsze ma blok 16 bajtów
 
     # --- Te funkcje są identyczne jak w ECB ---
     def validate_key(self, key: Any) -> bool:
         return isinstance(key, str) and len(key) > 0
 
-    def _prepare_key(self, key_str: str) -> bytes:
+    def _prepare_key(self, key_str: str, key_size: int) -> bytes:
         key_bytes = key_str.encode('utf-8')
-        return key_bytes.ljust(self.core.key_size, b'\x00')[:self.core.key_size]
+        return key_bytes.ljust(key_size, b'\x00')[:key_size]
 
     def _pad(self, dane: bytes) -> bytes:
         ilosc_brakujaca = self.block_size - (len(dane) % self.block_size)
@@ -45,9 +45,12 @@ class CbcMethod(BaseCryptoAlgorithm):
         return dane[:-ilosc_dopelnienia]
     # --- Koniec identycznych funkcji ---
 
-    def encrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def encrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+        
+        key_size = options.get('key_size', 16) # Domyślnie 128 bitów
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -59,8 +62,8 @@ class CbcMethod(BaseCryptoAlgorithm):
             raise TypeError("Dane muszą być typu str lub bytes")
             
         try:
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes)
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             padded_data = self._pad(data_bytes)
             
             # --- Logika CBC ---
@@ -75,7 +78,7 @@ class CbcMethod(BaseCryptoAlgorithm):
                 
                 # Operacja CBC: Ci = Ek(Pi ⊕ Ci-1)
                 blok_do_szyfrowania = xor_bytes(blok_jawny, poprzedni_blok_szyfrogramu)
-                nowy_blok_szyfrogramu = self.core.encrypt_block(blok_do_szyfrowania, expanded_key)
+                nowy_blok_szyfrogramu = core.encrypt_block(blok_do_szyfrowania, expanded_key)
                 
                 encrypted_bytes += nowy_blok_szyfrogramu
                 poprzedni_blok_szyfrogramu = nowy_blok_szyfrogramu
@@ -89,9 +92,12 @@ class CbcMethod(BaseCryptoAlgorithm):
             return base64.b64encode(final_output_bytes).decode('utf-8')
         return final_output_bytes
 
-    def decrypt(self, data: Union[str, bytes], key: Any) -> Union[str, bytes]:
+    def decrypt(self, data: Union[str, bytes], key: Any, **options) -> Union[str, bytes]:
         if not self.validate_key(key):
             raise ValueError("Nieprawidłowy klucz.")
+
+        key_size = options.get('key_size', 16) # Domyślnie 128 bitów
+        core = AESCore(key_size)
 
         return_text = False
         if isinstance(data, str):
@@ -105,12 +111,14 @@ class CbcMethod(BaseCryptoAlgorithm):
         else:
             raise TypeError("Dane muszą być typu str lub bytes")
 
-        if len(enc_bytes) % self.block_size != 0:
-            raise ValueError("Dane szyfrogramu mają nieprawidłową długość.")
+        if len(enc_bytes) < self.block_size * 2:
+             raise ValueError("Dane szyfrogramu są za krótkie (muszą zawierać co najmniej IV i jeden blok).")
+        if (len(enc_bytes) - self.block_size) % self.block_size != 0:
+            raise ValueError("Dane szyfrogramu (bez IV) mają nieprawidłową długość.")
 
         try:
-            key_bytes = self._prepare_key(key)
-            expanded_key = self.core.expand_key(key_bytes)
+            key_bytes = self._prepare_key(key, core.key_size)
+            expanded_key = core.expand_key(key_bytes)
             
             # --- Logika CBC ---
             # 1. Wyodrębnij IV (pierwsze 16 bajtów)
@@ -124,7 +132,7 @@ class CbcMethod(BaseCryptoAlgorithm):
                 blok_szyfrogramu = szyfrogram_wlasciwy[i : i + self.block_size]
                 
                 # Operacja CBC: Pi = Dk(Ci) ⊕ Ci-1
-                blok_odszyfrowany = self.core.decrypt_block(blok_szyfrogramu, expanded_key)
+                blok_odszyfrowany = core.decrypt_block(blok_szyfrogramu, expanded_key)
                 blok_jawny = xor_bytes(blok_odszyfrowany, poprzedni_blok_szyfrogramu)
                 
                 decrypted_padded_bytes += blok_jawny

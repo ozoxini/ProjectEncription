@@ -21,6 +21,34 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.algorithm_manager = AlgorithmManager()
         self.current_algorithm = None
+
+        # Kontrolki specyficzne dla RSA (przeniesione z init_ui)
+        self.rsa_group_box = QGroupBox("Opcje RSA")
+        rsa_outer_layout = QVBoxLayout(self.rsa_group_box)
+        
+        self.generate_keys_btn = QPushButton("Generuj nowe klucze")
+        rsa_outer_layout.addWidget(self.generate_keys_btn)
+
+        keys_layout = QHBoxLayout()
+        
+        public_key_layout = QVBoxLayout()
+        public_key_label = QLabel("Klucz publiczny:")
+        self.public_key_text = QTextEdit()
+        self.public_key_text.setPlaceholderText("(e, n)")
+        public_key_layout.addWidget(public_key_label)
+        public_key_layout.addWidget(self.public_key_text)
+        
+        private_key_layout = QVBoxLayout()
+        private_key_label = QLabel("Klucz prywatny:")
+        self.private_key_text = QTextEdit()
+        self.private_key_text.setPlaceholderText("(d, n)")
+        private_key_layout.addWidget(private_key_label)
+        private_key_layout.addWidget(self.private_key_text)
+        
+        keys_layout.addLayout(public_key_layout)
+        keys_layout.addLayout(private_key_layout)
+        rsa_outer_layout.addLayout(keys_layout)
+
         self.init_ui()
         self.apply_studio_style()
     
@@ -120,36 +148,9 @@ class MainWindow(QMainWindow):
         control_layout.addRow(self.aes_key_size_label, self.aes_key_size_combo)
         self.aes_key_size_label.hide()
         self.aes_key_size_combo.hide()
-
-        # Kontrolki specyficzne dla RSA
-        self.rsa_group_box = QGroupBox("Opcje RSA")
-        rsa_outer_layout = QVBoxLayout(self.rsa_group_box)
         
-        self.generate_keys_btn = QPushButton("Generuj nowe klucze")
-        rsa_outer_layout.addWidget(self.generate_keys_btn)
-
-        keys_layout = QHBoxLayout()
-        
-        public_key_layout = QVBoxLayout()
-        public_key_label = QLabel("Klucz publiczny:")
-        self.public_key_text = QTextEdit()
-        self.public_key_text.setPlaceholderText("(e, n)")
-        public_key_layout.addWidget(public_key_label)
-        public_key_layout.addWidget(self.public_key_text)
-        
-        private_key_layout = QVBoxLayout()
-        private_key_label = QLabel("Klucz prywatny:")
-        self.private_key_text = QTextEdit()
-        self.private_key_text.setPlaceholderText("(d, n)")
-        private_key_layout.addWidget(private_key_label)
-        private_key_layout.addWidget(self.private_key_text)
-        
-        keys_layout.addLayout(public_key_layout)
-        keys_layout.addLayout(private_key_layout)
-        rsa_outer_layout.addLayout(keys_layout)
-
-        control_layout.addRow(self.rsa_group_box)
-        self.rsa_group_box.hide()
+        control_layout.addRow(self.rsa_group_box) # Dodajemy rsa_group_box do layoutu tekstowego
+        # self.rsa_group_box.hide() # Ukrywanie jest obsługiwane przez on_algorithm_changed
         
         # ZAMIANA: zamiast pojedynczego QSpinBox udostępniamy stos (spin/text)
         self.key_spin = QSpinBox()
@@ -234,6 +235,9 @@ class MainWindow(QMainWindow):
         settings_layout.addRow(self.file_aes_key_size_label, self.file_aes_key_size_combo)
         self.file_aes_key_size_label.hide()
         self.file_aes_key_size_combo.hide()
+
+        settings_layout.addRow(self.rsa_group_box) # Dodajemy rsa_group_box do layoutu plikowego
+        # self.rsa_group_box.hide() # Ukrywanie jest obsługiwane przez on_algorithm_changed
         
         # ZAMIANA podobnie jak w widoku tekstowym: stack dla klucza plikowego
         self.file_key_spin = QSpinBox()
@@ -552,21 +556,32 @@ class MainWindow(QMainWindow):
     def encrypt_file(self):
         if not self._validate_file_input(): return
         try:
-            with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
-                content = f.read()
-            key = self._get_file_key()
-            
-            # Przygotowanie dodatkowych opcji dla algorytmu
             alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
-            options = {}
-            if "AES" in alg.name:
-                key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
-                options['key_size'] = int(key_size_str) // 8
-
-            encrypted = alg.encrypt(content, key, **options)
-            with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
-                f.write(encrypted)
-            QMessageBox.information(self, "Sukces", "Plik zaszyfrowany!")
+            if "RSA" in alg.name:
+                public_key_str = self.public_key_text.toPlainText()
+                if not public_key_str:
+                    QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
+                    return
+                key = eval(public_key_str)
+                
+                with open(self.file_path_input.text(), 'rb') as f:
+                    content = f.read()
+                encrypted = alg.encrypt(content, key)
+                with open(self.file_path_input.text() + ".enc", 'wb') as f:
+                    f.write(encrypted)
+                QMessageBox.information(self, "Sukces", "Plik zaszyfrowany do .enc!")
+            else:
+                with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
+                    content = f.read()
+                key = self._get_file_key()
+                options = {}
+                if "AES" in alg.name:
+                    key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                    options['key_size'] = int(key_size_str) // 8
+                encrypted = alg.encrypt(content, key, **options)
+                with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
+                    f.write(encrypted)
+                QMessageBox.information(self, "Sukces", "Plik zaszyfrowany!")
             self.statusBar().showMessage("Zaszyfrowano plik!")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Szyfrowanie pliku: {str(e)}")
@@ -574,21 +589,33 @@ class MainWindow(QMainWindow):
     def decrypt_file(self):
         if not self._validate_file_input(): return
         try:
-            with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
-                content = f.read()
-            key = self._get_file_key()
-
-            # Przygotowanie dodatkowych opcji dla algorytmu
             alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
-            options = {}
-            if "AES" in alg.name:
-                key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
-                options['key_size'] = int(key_size_str) // 8
-
-            decrypted = alg.decrypt(content, key, **options)
-            with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
-                f.write(decrypted)
-            QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")
+            if "RSA" in alg.name:
+                private_key_str = self.private_key_text.toPlainText()
+                if not private_key_str:
+                    QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
+                    return
+                key = eval(private_key_str)
+                
+                with open(self.file_path_input.text(), 'rb') as f:
+                    content = f.read()
+                decrypted = alg.decrypt(content, key)
+                output_path = self.file_path_input.text().replace(".enc", "")
+                with open(output_path, 'wb') as f:
+                    f.write(decrypted)
+                QMessageBox.information(self, "Sukces", f"Plik deszyfrowany do {os.path.basename(output_path)}!")
+            else:
+                with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
+                    content = f.read()
+                key = self._get_file_key()
+                options = {}
+                if "AES" in alg.name:
+                    key_size_str = self.file_aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
+                    options['key_size'] = int(key_size_str) // 8
+                decrypted = alg.decrypt(content, key, **options)
+                with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
+                    f.write(decrypted)
+                QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")
             self.statusBar().showMessage("Deszyfrowano plik!")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Deszyfrowanie pliku: {str(e)}")
@@ -601,7 +628,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Błąd", "Wprowadź tekst!")
             return False
         
-        if "RSA" not in self.current_algorithm.name:
+        if "RSA" in self.current_algorithm.name:
+            # Walidacja kluczy RSA odbywa się w metodach encrypt/decrypt
+            # Tutaj sprawdzamy tylko, czy pola kluczy nie są puste
+            if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                return False
+        else:
             key = self._get_text_key()
             try:
                 if not self.current_algorithm.validate_key(key):
@@ -620,14 +653,22 @@ class MainWindow(QMainWindow):
         if not self.file_path_input.text():
             QMessageBox.warning(self, "Błąd", "Wybierz plik!")
             return False
-        key = self._get_file_key()
-        try:
-            if not alg.validate_key(key):
+        
+        if "RSA" in alg.name:
+            # Walidacja kluczy RSA odbywa się w metodach encrypt/decrypt
+            # Tutaj sprawdzamy tylko, czy pola kluczy nie są puste
+            if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                return False
+        else:
+            key = self._get_file_key()
+            try:
+                if not alg.validate_key(key):
+                    QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
+                    return False
+            except Exception:
                 QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
                 return False
-        except Exception:
-            QMessageBox.warning(self, "Błąd", "Nieprawidłowy klucz!")
-            return False
         return True
 
     # pomocnicze metody do pobierania aktualnego klucza

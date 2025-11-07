@@ -53,7 +53,7 @@ class RsaCipher(BaseCryptoAlgorithm):
             m = pow(c, d, n)
             decrypted_chunks.append(m.to_bytes((n.bit_length() - 1) // 8, 'big'))
         
-        return b''.join(decrypted_chunks).rstrip(b'\x00').decode('utf-8')
+        return b''.join(decrypted_chunks).rstrip(b'\x00')
 
     def _is_prime(self, n, k=5):
         if n <= 1:

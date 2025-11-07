@@ -2,8 +2,8 @@
 
 ## [1.2.5a] - 07.11.2025
 
-- **Szyfr RSA** - implemetnacja szyfru RSA. Program generuje klucz publiczny i prywatny
-
+- **Szyfr RSA** - implemetnacja szyfru RSA, ktory szyfruje pliki, jak i tekst. Program generuje klucz publiczny i prywatny, umozliwiajac bezpiecznie szyforwanie.
+- **Interfejs** - przeniesienie generowania kluczy do zakładki "pliki", oraz poprawiono UI.
 
 ## [1.2a] - 06.11.2025
 

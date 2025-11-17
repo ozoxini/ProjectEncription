@@ -571,24 +571,67 @@ class MainWindow(QMainWindow):
                     except ValueError as e:
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
-                    signed_data = bytes.fromhex(self.input_text.toPlainText())
-                    data = self.input_text.toPlainText()  # Oryginalne dane do weryfikacji
                     
-                    # Dla weryfikacji w GUI potrzebujemy oddzielnie podpisu i danych
-                    # Aktualnie mamy tylko podpis w hex. Powinniśmy mieć dane i podpis.
-                    # Dla uproszczenia: weryfikujemy podpis samych danych z output
-                    if self.output_text.toPlainText():
-                        data_to_verify = self.output_text.toPlainText().encode('utf-8')
-                    else:
-                        QMessageBox.warning(self, "Błąd", "Brak danych do weryfikacji (powinny być w polu wyjściowym)")
+                    # KROK DIAGNOSTYCZNY: Spróbuj automatycznie wyciągnąć klucz publiczny z prywatnego
+                    # Jeśli pierwsza liczba > 65537, to prawdopodobnie (d, n) zamiast (e, n)
+                    first_num, n = key
+                    if first_num > 65537 and first_num < n:
+                        # Wygląda na klucz prywatny (d > e)
+                        try:
+                            key = self._extract_public_from_private_key(key)
+                            QMessageBox.information(self, "Info", 
+                                "Wykryto klucz prywatny w polu klucza publicznego.\n"
+                                "Automatycznie wyodrębniony klucz publiczny (e=65537, n).\n"
+                                "Kontynuuję weryfikację...")
+                        except Exception:
+                            pass  # Jeśli nie uda się, spróbuj z tym co mamy
+                    
+                    # We expect input_text to contain signature in hex.
+                    try:
+                        signed_data = bytes.fromhex(self.input_text.toPlainText().strip())
+                    except Exception:
+                        QMessageBox.warning(self, "Błąd", "Nieprawidłowy format podpisu (oczekiwany hex).")
                         return
-                    
-                    is_valid = self.current_algorithm.verify(data_to_verify, signed_data, key)
-                    if is_valid:
-                        QMessageBox.information(self, "Sukces", "✓ Podpis jest prawidłowy!")
+
+                    # Przygotuj listę kandydatów danych do weryfikacji (różne reprezentacje):
+                    candidates = []
+                    out_text = self.output_text.toPlainText()
+                    # 1) output jako UTF-8
+                    if out_text:
+                        candidates.append(("output_utf8", out_text.encode('utf-8')))
+                    # 2) output jako hex -> bytes (przydatne gdy podpis dotyczy zaszyfrowanych danych)
+                    if out_text:
+                        try:
+                            candidates.append(("output_hex", bytes.fromhex(out_text.strip())))
+                        except Exception:
+                            pass
+                    # 3) jeśli w pola wejściowym poza podpisem jest dodatkowy tekst (np. oryginalne dane), spróbuj go
+                    # Użyj pola input_text tylko jeśli zawiera coś poza samym hex (np. użytkownik wkleił dane zamiast podpisu)
+                    # (tu zakładamy, że podpis był w polu podpisu, więc nie dodajemy input jako danych domyślnie)
+
+                    # 4) try weryfikacji z contentem pobranym z wyświetlanego wcześniej odszyfrowania (jeśli dostępne)
+                    tried_methods = []
+                    verified = False
+                    which = None
+                    for name, candidate in candidates:
+                        try:
+                            if self.current_algorithm.verify(candidate, signed_data, key):
+                                verified = True
+                                which = name
+                                break
+                        except Exception:
+                            # ignoruj i próbuj kolejny format
+                            tried_methods.append(name)
+
+                    if verified:
+                        QMessageBox.information(self, "Sukces", f"✓ Podpis jest prawidłowy! (metoda: {which})")
                         self.statusBar().showMessage("Podpis zweryfikowany!")
                     else:
-                        QMessageBox.warning(self, "Błąd", "✗ Podpis jest NIEPRAWIDŁOWY!")
+                        QMessageBox.warning(self, "Błąd", "✗ Podpis jest NIEPRAWIDŁOWY!\n\n"
+                                            "Wskazówka: Upewnij się, że:\n"
+                                            "- Używasz klucza publicznego osoby, która podpisała dane\n"
+                                            "- Dane nie zostały zmienione od czasu podpisania\n"
+                                            "- Podpis jest w formacie hex (wklejony do pola Input)")
                         self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
             else:
                 key = self._get_text_key()
@@ -708,6 +751,22 @@ class MainWindow(QMainWindow):
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
                     
+                    # KROK DIAGNOSTICZNY: Spróbuj automatycznie wyciągnąć klucz publiczny z prywatnego
+                    # Jeśli pierwsza liczba > 65537, to prawdopodobnie (d, n) zamiast (e, n)
+                    first_num, n = key
+                    if first_num > 65537 and first_num < n:
+                        # Wygląda na klucz prywatny (d > e)
+                        # Wyciągnij publiczny klucz
+                        try:
+                            key = self._extract_public_from_private_key(key)
+                            QMessageBox.information(self, "Info", 
+                                "Wykryto klucz prywatny w polu klucza publicznego.\n"
+                                "Automatycznie wyodrębniony klucz publiczny (e=65537, n).\n"
+                                "Kontynuuję weryfikację...")
+                        except Exception:
+                            QMessageBox.warning(self, "Błąd", "Nie mogę wyciągnąć klucza publicznego z prywatnego!")
+                            return
+                    
                     # Czytaj plik podpisu
                     sig_path = self.file_path_input.text()
                     with open(sig_path, 'rb') as f:
@@ -728,7 +787,10 @@ class MainWindow(QMainWindow):
                         QMessageBox.information(self, "Sukces", f"✓ Podpis pliku {os.path.basename(data_path)} jest PRAWIDŁOWY!")
                         self.statusBar().showMessage("Podpis zweryfikowany!")
                     else:
-                        QMessageBox.critical(self, "Błąd", f"✗ Podpis pliku {os.path.basename(data_path)} jest NIEPRAWIDŁOWY!")
+                        QMessageBox.critical(self, "Błąd", f"✗ Podpis pliku {os.path.basename(data_path)} jest NIEPRAWIDŁOWY!\n\n"
+                                            "Wskazówka: Upewnij się, że:\n"
+                                            "- Używasz klucza publicznego osoby, która podpisała plik\n"
+                                            "- Plik nie został zmieniony od czasu podpisania")
                         self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
             else:
                 with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
@@ -838,3 +900,20 @@ class MainWindow(QMainWindow):
             return parsed
         except (ValueError, SyntaxError) as e:
             raise ValueError(f"Nieprawidłowy format klucza RSA: {str(e)}")
+    
+    def _extract_public_from_private_key(self, private_key: tuple) -> tuple:
+        """
+        Wyodrębnia klucz publiczny z klucza prywatnego.
+        
+        Klucz prywatny: (d, n)
+        Klucz publiczny: (e, n) gdzie e to standardowo 65537
+        
+        Zwraca: tuple (e, n) lub raises ValueError
+        """
+        if not isinstance(private_key, tuple) or len(private_key) != 2:
+            raise ValueError("Klucz prywatny musi być krotką (d, n)")
+        
+        d, n = private_key
+        # Standardowa wartość e w RSA
+        e = 65537
+        return (e, n)

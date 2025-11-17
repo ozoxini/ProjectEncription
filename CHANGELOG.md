@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3a] - 17.11.2025
+
+- **Szyfr RSA** - implementacja dodawania podpisu do szyfrowanego pliku w szyfrze RSA, naprawiono błąd z szyfrowaniem pustych danych, oraz poprawiono logike w pliku UI.
+
 ## [1.2.5a] - 07.11.2025
 
 - **Szyfr RSA** - implemetnacja szyfru RSA, ktory szyfruje pliki, jak i tekst. Program generuje klucz publiczny i prywatny, umozliwiajac bezpiecznie szyforwanie.

@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 import os
+import ast
 
 from ..crypto.algorithm_manager import AlgorithmManager
 
@@ -24,10 +25,14 @@ class MainWindow(QMainWindow):
 
         # Kontrolki specyficzne dla RSA (przeniesione z init_ui)
         self.rsa_group_box = QGroupBox("Opcje RSA")
-        rsa_outer_layout = QVBoxLayout(self.rsa_group_box)
+        rsa_outer_layout = QFormLayout(self.rsa_group_box)
         
         self.generate_keys_btn = QPushButton("Generuj nowe klucze")
-        rsa_outer_layout.addWidget(self.generate_keys_btn)
+        rsa_outer_layout.addRow(self.generate_keys_btn)
+
+        self.rsa_mode_combo = QComboBox()
+        self.rsa_mode_combo.addItems(["Szyfruj / Deszyfruj", "Podpisz / Weryfikuj"])
+        rsa_outer_layout.addRow("Tryb operacji:", self.rsa_mode_combo)
 
         keys_layout = QHBoxLayout()
         
@@ -47,7 +52,7 @@ class MainWindow(QMainWindow):
         
         keys_layout.addLayout(public_key_layout)
         keys_layout.addLayout(private_key_layout)
-        rsa_outer_layout.addLayout(keys_layout)
+        rsa_outer_layout.addRow(keys_layout)
 
         self.init_ui()
         self.apply_studio_style()
@@ -109,7 +114,7 @@ class MainWindow(QMainWindow):
         
         # Pasek statusu
         self.statusBar().showMessage("Gotowy")
-        version_label = QLabel("v.1.2.5a")
+        version_label = QLabel("v.1.3a")
         version_label.setObjectName("versionLabel")
         self.statusBar().addPermanentWidget(version_label)
         
@@ -489,7 +494,7 @@ class MainWindow(QMainWindow):
             
             self.public_key_text.setPlainText(str(public_key))
             self.private_key_text.setPlainText(str(private_key))
-            self.statusBar().showMessage("Wygenerowano nowe klucze RSA!")
+            self.statusBar().showMessage("Wygenerowano nowe klucze RSA")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Generowanie kluczy RSA: {str(e)}")
     
@@ -497,13 +502,33 @@ class MainWindow(QMainWindow):
         if not self._validate_text_input(): return
         try:
             if "RSA" in self.current_algorithm.name:
-                public_key_str = self.public_key_text.toPlainText()
-                if not public_key_str:
-                    QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
-                    return
-                key = eval(public_key_str)
-                encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key)
-                self.output_text.setPlainText(encrypted.hex())
+                mode = self.rsa_mode_combo.currentText()
+                if mode == "Szyfruj / Deszyfruj":
+                    public_key_str = self.public_key_text.toPlainText()
+                    if not public_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(public_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key)
+                    self.output_text.setPlainText(encrypted.hex())
+                    self.statusBar().showMessage("Zaszyfrowano!")
+                elif mode == "Podpisz / Weryfikuj":
+                    private_key_str = self.private_key_text.toPlainText()
+                    if not private_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(private_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    signed = self.current_algorithm.sign(self.input_text.toPlainText().encode('utf-8'), key)
+                    self.output_text.setPlainText(signed.hex())
+                    self.statusBar().showMessage("Podpisano!")
             else:
                 key = self._get_text_key()
                 options = {}
@@ -512,8 +537,7 @@ class MainWindow(QMainWindow):
                     options['key_size'] = int(key_size_str) // 8
                 encrypted = self.current_algorithm.encrypt(self.input_text.toPlainText(), key, **options)
                 self.output_text.setPlainText(encrypted)
-            
-            self.statusBar().showMessage("Zaszyfrowano!")
+                self.statusBar().showMessage("Zaszyfrowano.")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Szyfrowanie: {str(e)}")
     
@@ -521,13 +545,51 @@ class MainWindow(QMainWindow):
         if not self._validate_text_input(): return
         try:
             if "RSA" in self.current_algorithm.name:
-                private_key_str = self.private_key_text.toPlainText()
-                if not private_key_str:
-                    QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
-                    return
-                key = eval(private_key_str)
-                encrypted_data = bytes.fromhex(self.input_text.toPlainText())
-                decrypted = self.current_algorithm.decrypt(encrypted_data, key)
+                mode = self.rsa_mode_combo.currentText()
+                if mode == "Szyfruj / Deszyfruj":
+                    private_key_str = self.private_key_text.toPlainText()
+                    if not private_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(private_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    encrypted_data = bytes.fromhex(self.input_text.toPlainText())
+                    decrypted = self.current_algorithm.decrypt(encrypted_data, key)
+                    self.input_text.clear()
+                    self.output_text.setPlainText(decrypted.decode('utf-8', errors='replace'))
+                    self.statusBar().showMessage("Deszyfrowano!")
+                elif mode == "Podpisz / Weryfikuj":
+                    public_key_str = self.public_key_text.toPlainText()
+                    if not public_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(public_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    signed_data = bytes.fromhex(self.input_text.toPlainText())
+                    data = self.input_text.toPlainText()  # Oryginalne dane do weryfikacji
+                    
+                    # Dla weryfikacji w GUI potrzebujemy oddzielnie podpisu i danych
+                    # Aktualnie mamy tylko podpis w hex. Powinniśmy mieć dane i podpis.
+                    # Dla uproszczenia: weryfikujemy podpis samych danych z output
+                    if self.output_text.toPlainText():
+                        data_to_verify = self.output_text.toPlainText().encode('utf-8')
+                    else:
+                        QMessageBox.warning(self, "Błąd", "Brak danych do weryfikacji (powinny być w polu wyjściowym)")
+                        return
+                    
+                    is_valid = self.current_algorithm.verify(data_to_verify, signed_data, key)
+                    if is_valid:
+                        QMessageBox.information(self, "Sukces", "✓ Podpis jest prawidłowy!")
+                        self.statusBar().showMessage("Podpis zweryfikowany!")
+                    else:
+                        QMessageBox.warning(self, "Błąd", "✗ Podpis jest NIEPRAWIDŁOWY!")
+                        self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
             else:
                 key = self._get_text_key()
                 options = {}
@@ -535,10 +597,9 @@ class MainWindow(QMainWindow):
                     key_size_str = self.aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
                     options['key_size'] = int(key_size_str) // 8
                 decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), key, **options)
-
-            self.input_text.clear()
-            self.output_text.setPlainText(decrypted)
-            self.statusBar().showMessage("Deszyfrowano!")
+                self.input_text.clear()
+                self.output_text.setPlainText(decrypted)
+                self.statusBar().showMessage("Deszyfrowano!")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Deszyfrowanie: {str(e)}")
     
@@ -558,18 +619,43 @@ class MainWindow(QMainWindow):
         try:
             alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
             if "RSA" in alg.name:
-                public_key_str = self.public_key_text.toPlainText()
-                if not public_key_str:
-                    QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
-                    return
-                key = eval(public_key_str)
-                
-                with open(self.file_path_input.text(), 'rb') as f:
-                    content = f.read()
-                encrypted = alg.encrypt(content, key)
-                with open(self.file_path_input.text() + ".enc", 'wb') as f:
-                    f.write(encrypted)
-                QMessageBox.information(self, "Sukces", "Plik zaszyfrowany do .enc!")
+                mode = self.rsa_mode_combo.currentText()
+                if mode == "Szyfruj / Deszyfruj":
+                    public_key_str = self.public_key_text.toPlainText()
+                    if not public_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(public_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    
+                    with open(self.file_path_input.text(), 'rb') as f:
+                        content = f.read()
+                    encrypted = alg.encrypt(content, key)
+                    with open(self.file_path_input.text() + ".enc", 'wb') as f:
+                        f.write(encrypted)
+                    QMessageBox.information(self, "Sukces", "Plik zaszyfrowany do .enc")
+                    self.statusBar().showMessage("Plik zaszyfrowany!")
+                elif mode == "Podpisz / Weryfikuj":
+                    private_key_str = self.private_key_text.toPlainText()
+                    if not private_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(private_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    
+                    with open(self.file_path_input.text(), 'rb') as f:
+                        content = f.read()
+                    signed = alg.sign(content, key)
+                    with open(self.file_path_input.text() + ".sig", 'wb') as f:
+                        f.write(signed)
+                    QMessageBox.information(self, "Sukces", "Plik podpisany do .sig")
+                    self.statusBar().showMessage("Plik podpisany!")
             else:
                 with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -581,8 +667,8 @@ class MainWindow(QMainWindow):
                 encrypted = alg.encrypt(content, key, **options)
                 with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                     f.write(encrypted)
-                QMessageBox.information(self, "Sukces", "Plik zaszyfrowany!")
-            self.statusBar().showMessage("Zaszyfrowano plik!")
+                QMessageBox.information(self, "Sukces", "Plik zaszyfrowany.")
+                self.statusBar().showMessage("Plik zaszyfrowany!")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Szyfrowanie pliku: {str(e)}")
     
@@ -591,19 +677,59 @@ class MainWindow(QMainWindow):
         try:
             alg = self.algorithm_manager.get_algorithm(self.file_algorithm_combo.currentText())
             if "RSA" in alg.name:
-                private_key_str = self.private_key_text.toPlainText()
-                if not private_key_str:
-                    QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
-                    return
-                key = eval(private_key_str)
-                
-                with open(self.file_path_input.text(), 'rb') as f:
-                    content = f.read()
-                decrypted = alg.decrypt(content, key)
-                output_path = self.file_path_input.text().replace(".enc", "")
-                with open(output_path, 'wb') as f:
-                    f.write(decrypted)
-                QMessageBox.information(self, "Sukces", f"Plik deszyfrowany do {os.path.basename(output_path)}!")
+                mode = self.rsa_mode_combo.currentText()
+                if mode == "Szyfruj / Deszyfruj":
+                    private_key_str = self.private_key_text.toPlainText()
+                    if not private_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz prywatny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(private_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    
+                    with open(self.file_path_input.text(), 'rb') as f:
+                        content = f.read()
+                    decrypted = alg.decrypt(content, key)
+                    output_path = self.file_path_input.text().replace(".enc", "")
+                    with open(output_path, 'wb') as f:
+                        f.write(decrypted)
+                    QMessageBox.information(self, "Sukces", f"Plik deszyfrowany do {os.path.basename(output_path)}!")
+                    self.statusBar().showMessage("Plik deszyfrowany!")
+                elif mode == "Podpisz / Weryfikuj":
+                    public_key_str = self.public_key_text.toPlainText()
+                    if not public_key_str:
+                        QMessageBox.warning(self, "Błąd", "Klucz publiczny nie może być pusty!")
+                        return
+                    try:
+                        key = self._parse_rsa_key_safe(public_key_str)
+                    except ValueError as e:
+                        QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
+                        return
+                    
+                    # Czytaj plik podpisu
+                    sig_path = self.file_path_input.text()
+                    with open(sig_path, 'rb') as f:
+                        signature = f.read()
+                    
+                    # Czytaj oryginalny plik danych (bez .sig)
+                    data_path = sig_path.replace(".sig", "")
+                    if data_path == sig_path:
+                        QMessageBox.warning(self, "Błąd", "Plik powinien mieć rozszerzenie .sig!")
+                        return
+                    
+                    with open(data_path, 'rb') as f:
+                        data = f.read()
+                    
+                    # Weryfikuj podpis
+                    is_valid = alg.verify(data, signature, key)
+                    if is_valid:
+                        QMessageBox.information(self, "Sukces", f"✓ Podpis pliku {os.path.basename(data_path)} jest PRAWIDŁOWY!")
+                        self.statusBar().showMessage("Podpis zweryfikowany!")
+                    else:
+                        QMessageBox.critical(self, "Błąd", f"✗ Podpis pliku {os.path.basename(data_path)} jest NIEPRAWIDŁOWY!")
+                        self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
             else:
                 with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -616,7 +742,7 @@ class MainWindow(QMainWindow):
                 with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                     f.write(decrypted)
                 QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")
-            self.statusBar().showMessage("Deszyfrowano plik!")
+                self.statusBar().showMessage("Plik deszyfrowany!")
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Deszyfrowanie pliku: {str(e)}")
     
@@ -629,11 +755,15 @@ class MainWindow(QMainWindow):
             return False
         
         if "RSA" in self.current_algorithm.name:
-            # Walidacja kluczy RSA odbywa się w metodach encrypt/decrypt
-            # Tutaj sprawdzamy tylko, czy pola kluczy nie są puste
-            if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
-                QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
-                return False
+            mode = self.rsa_mode_combo.currentText()
+            if mode == "Szyfruj / Deszyfruj":
+                if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                    QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                    return False
+            elif mode == "Podpisz / Weryfikuj":
+                if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                    QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                    return False
         else:
             key = self._get_text_key()
             try:
@@ -655,11 +785,15 @@ class MainWindow(QMainWindow):
             return False
         
         if "RSA" in alg.name:
-            # Walidacja kluczy RSA odbywa się w metodach encrypt/decrypt
-            # Tutaj sprawdzamy tylko, czy pola kluczy nie są puste
-            if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
-                QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
-                return False
+            mode = self.rsa_mode_combo.currentText()
+            if mode == "Szyfruj / Deszyfruj":
+                if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                    QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                    return False
+            elif mode == "Podpisz / Weryfikuj":
+                if not self.public_key_text.toPlainText() and not self.private_key_text.toPlainText():
+                    QMessageBox.warning(self, "Błąd", "Wprowadź klucz publiczny lub prywatny dla RSA!")
+                    return False
         else:
             key = self._get_file_key()
             try:
@@ -681,3 +815,26 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'file_key_stack') and self.file_key_stack.currentIndex() == 0:
             return self.file_key_spin.value()
         return self.file_key_text.text()
+
+    def _parse_rsa_key_safe(self, key_str: str) -> tuple:
+        """
+        Bezpiecznie parsuje string klucza RSA na krotkę (e, n) lub (d, n).
+        
+        Zwraca: tuple (e/d, n) lub raises ValueError/SyntaxError
+        """
+        if not key_str or not key_str.strip():
+            raise ValueError("Klucz nie może być pusty")
+        
+        try:
+            # Użyj ast.literal_eval zamiast eval() dla bezpieczeństwa
+            parsed = ast.literal_eval(key_str.strip())
+            
+            if not isinstance(parsed, tuple) or len(parsed) != 2:
+                raise ValueError("Klucz RSA musi być krotką (liczba, liczba)")
+            
+            if not (isinstance(parsed[0], int) and isinstance(parsed[1], int)):
+                raise ValueError("Obie części klucza muszą być liczbami całkowitymi")
+            
+            return parsed
+        except (ValueError, SyntaxError) as e:
+            raise ValueError(f"Nieprawidłowy format klucza RSA: {str(e)}")

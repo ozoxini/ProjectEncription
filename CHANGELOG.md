@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.5a] - 18.11.2025
+
+- **Debugowanie** - dodanie dodatkowej zakładki z debugowaniem, która umozliwia zapisywanie i podgląd logów z kazdej operacji szyfrowania i deszyfrowania, która zawiera dodatkowy opis
+
 ## [1.3a] - 17.11.2025
 
 - **Szyfr RSA** - implementacja dodawania podpisu do szyfrowanego pliku w szyfrze RSA, naprawiono błąd z szyfrowaniem pustych danych, oraz poprawiono logike w pliku UI.

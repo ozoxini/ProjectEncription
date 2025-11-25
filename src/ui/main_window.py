@@ -367,9 +367,9 @@ class MainWindow(QMainWindow):
     
     def clear_logs(self):
         """Czyści wszystkie logi"""
-        self.logger.clear()
+        self.logger.clear_all_history()
         self.refresh_logs_view()
-        QMessageBox.information(self, "Info", "Logi zostały wyczyszczone.")
+        QMessageBox.information(self, "Info", "Wszystkie logi zostały wyczyszczone.")
     
     def export_logs(self):
         """Eksportuje logi do pliku tekstowego"""
@@ -599,8 +599,8 @@ class MainWindow(QMainWindow):
             algorithm_name = self.current_algorithm.name
             
             self.logger.set_algorithm(algorithm_name, self.rsa_mode_combo.currentText() if "RSA" in algorithm_name else None)
-            self.logger.info(f"Rozpoczęcie szyfrowania", f"Algorytm: {algorithm_name}")
-            self.logger.debug(f"Rozmiar tekstu", f"{len(plaintext)} znaków")
+            self.logger.info(f"Rozpoczęcie szyfrowania", f"Algorytm: {algorithm_name}", is_step=True)
+            self.logger.log_input_preview(plaintext)
             
             if "RSA" in algorithm_name:
                 mode = self.rsa_mode_combo.currentText()
@@ -614,18 +614,31 @@ class MainWindow(QMainWindow):
                     try:
                         key = self._parse_rsa_key_safe(public_key_str)
                         e, n = key
-                        self.logger.success("Klucz publiczny", f"e={e}, n={str(n)[:50]}...")
+                        key_bits = len(bin(n)) - 2
+                        self.logger.success("Klucz publiczny", f"e={e}, n={str(n)[:50]}...", is_step=True)
+                        self.logger.debug("Rozmiar modułu (bity)", str(key_bits))
+                        self.logger.explain_algorithm("RSA", key_bits)
+                        # Szczegółowe logowanie RSA
+                        self.logger.log_rsa_details(key_bits, is_encrypt=True)
                     except ValueError as e:
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
                     
-                    self.logger.info("Szyfrowanie tekstu", "Trwa...")
+                    self.logger.info("Przygotowanie tekstu", f"Rozmiar oryginalny: {len(plaintext)} znaków", is_step=True)
+                    self.logger.debug("Kodowanie tekstu", "UTF-8")
+                    
+                    self.logger.info("Szyfrowanie tekstu", f"Kryptografia RSA z kluczem {len(bin(n))-2}-bitowym", is_step=True)
                     encrypted = self.current_algorithm.encrypt(plaintext, key)
                     self.logger.success("Szyfrowanie", f"Ukończone, rozmiar: {len(encrypted)} bajtów")
                     
+                    compression_ratio = (len(encrypted) / len(plaintext.encode('utf-8'))) * 100 if plaintext else 0
+                    self.logger.debug("Stosunek rozmiaru", f"{compression_ratio:.1f}% rozmiaru oryginalnego")
+                    
                     encrypted_hex = encrypted.hex()
                     self.output_text.setPlainText(encrypted_hex)
-                    self.logger.debug("Format wyjścia", "Heksadecymalny")
+                    self.logger.info("Konwersja wyniku", "Tekst → Heksadecymalny (BASE16)", is_step=True)
+                    self.logger.debug("Rozmiar heksadecymalny", f"{len(encrypted_hex)} znaków")
+                    self.logger.set_result(encrypted_hex)
                     self.statusBar().showMessage("Zaszyfrowano!")
                     
                 elif mode == "Podpisz / Weryfikuj":
@@ -638,18 +651,30 @@ class MainWindow(QMainWindow):
                     try:
                         key = self._parse_rsa_key_safe(private_key_str)
                         d, n = key
-                        self.logger.success("Klucz prywatny", f"Załadowany, n={str(n)[:50]}...")
+                        key_bits = len(bin(n)) - 2
+                        self.logger.success("Klucz prywatny", f"Załadowany, n={str(n)[:50]}...", is_step=True)
+                        self.logger.debug("Rozmiar modułu (bity)", str(key_bits))
+                        self.logger.explain_algorithm("RSA", key_bits)
+                        # Szczegółowe logowanie RSA
+                        self.logger.log_rsa_details(key_bits, is_encrypt=False)
                     except ValueError as e:
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
                     
-                    self.logger.info("Podpisywanie tekstu", "Trwa...")
+                    self.logger.info("Przygotowanie tekstu", f"Rozmiar: {len(plaintext)} znaków", is_step=True)
+                    self.logger.debug("Kodowanie tekstu", "UTF-8")
+                    
+                    self.logger.info("Podpisywanie tekstu", f"Algorytm: RSA z {len(bin(n))-2}-bitowym kluczem", is_step=True)
                     signed = self.current_algorithm.sign(plaintext.encode('utf-8'), key)
                     self.logger.success("Podpis", f"Utworzony, rozmiar: {len(signed)} bajtów")
                     
+                    self.logger.debug("Typ podpisu", "RSA PSS (PKCS#1 v2.1)")
+                    
                     signed_hex = signed.hex()
                     self.output_text.setPlainText(signed_hex)
-                    self.logger.debug("Format wyjścia", "Heksadecymalny")
+                    self.logger.info("Konwersja wyniku", "Podpis binarny → Heksadecymalny (BASE16)", is_step=True)
+                    self.logger.debug("Rozmiar heksadecymalny", f"{len(signed_hex)} znaków")
+                    self.logger.set_result(signed_hex)
                     self.statusBar().showMessage("Podpisano!")
             else:
                 key = self._get_text_key()
@@ -658,20 +683,53 @@ class MainWindow(QMainWindow):
                     key_size_str = self.aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
                     key_size = int(key_size_str) // 8
                     options['key_size'] = key_size
-                    self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size_str} bitów")
-                    self.logger.debug("Rozmiar klucza (bajty)", str(key_size))
+                    self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size_str} bitów ({key_size} bajtów)", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key_size)
+                    self.logger.debug("Tryb operacji", "ECB (Electronic Codebook)")
+                    # Szczegółowe logowanie AES
+                    self.logger.log_aes_details(len(plaintext), key_size, is_encrypt=True)
+                elif "Cezara" in algorithm_name:
+                    self.logger.info("Klucz szyfrowania", f"Przesunięcie: {key} pozycji", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key)
+                    # Szczegółowe logowanie Cezara
+                    self.logger.log_caesar_details(plaintext, key, is_encrypt=True)
+                elif "Vigenere" in algorithm_name:
+                    self.logger.info("Klucz szyfrowania", f"Klucz: '{key}' (długość: {len(str(key))})", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key)
+                    # Szczegółowe logowanie Vigenere'a
+                    self.logger.log_vigenere_details(plaintext, str(key), is_encrypt=True)
+                elif "Beaufort" in algorithm_name:
+                    self.logger.info("Klucz szyfrowania", f"Klucz: '{key}' (długość: {len(str(key))})", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key)
+                    # Szczegółowe logowanie Beauforta
+                    self.logger.log_beaufort_details(plaintext, str(key), is_encrypt=True)
+                elif "ChaCha" in algorithm_name:
+                    self.logger.info("Klucz szyfrowania", f"Długość: {len(str(key))} znaków", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key)
+                    # Szczegółowe logowanie ChaCha20
+                    self.logger.log_chacha20_details(len(plaintext), key_size=32, is_encrypt=True)
+                else:
+                    self.logger.info("Klucz szyfrowania", f"Długość: {len(str(key))} znaków", is_step=True)
+                    self.logger.explain_algorithm(algorithm_name, key)
                 
-                self.logger.info("Szyfrowanie tekstu", "Trwa...")
+                self.logger.info("Przygotowanie tekstu", f"Rozmiar oryginalny: {len(plaintext)} znaków", is_step=True)
+                self.logger.info("Szyfrowanie tekstu", f"Algorytm: {algorithm_name}", is_step=True)
                 encrypted = self.current_algorithm.encrypt(plaintext, key, **options)
                 self.logger.success("Szyfrowanie", f"Ukończone, rozmiar wyjścia: {len(encrypted)} znaków")
                 
+                compression_ratio = (len(encrypted) / len(plaintext)) * 100 if plaintext else 0
+                self.logger.debug("Stosunek rozmiaru", f"{compression_ratio:.1f}% rozmiaru oryginalnego")
+                
                 self.output_text.setPlainText(encrypted)
+                self.logger.debug("Format wyjścia", "Tekst szyfrowany")
+                self.logger.set_result(encrypted)
                 self.statusBar().showMessage("Zaszyfrowano.")
             
             self.logger.success("KONIEC", "Operacja szyfrowania zakończona pomyślnie!")
             self.refresh_logs_view()
             
         except Exception as e:
+            self.logger.set_error()
             self.logger.error("Błąd szyfrowania", str(e))
             self.refresh_logs_view()
             QMessageBox.critical(self, "Błąd", f"Szyfrowanie: {str(e)}")
@@ -697,27 +755,34 @@ class MainWindow(QMainWindow):
                     try:
                         key = self._parse_rsa_key_safe(private_key_str)
                         d, n = key
+                        key_bits = len(bin(n)) - 2
                         self.logger.success("Klucz prywatny", f"Załadowany, n={str(n)[:50]}...")
+                        self.logger.debug("Rozmiar modułu (bity)", str(key_bits))
+                        # Szczegółowe logowanie RSA
+                        self.logger.log_rsa_details(key_bits, is_encrypt=False)
                     except ValueError as e:
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
                     
                     try:
-                        self.logger.info("Parsowanie tekstu wejściowego", "Konwersja hex -> bytes")
+                        self.logger.log_input_preview(self.input_text.toPlainText(), label="Tekst szyfrowany")
+                        self.logger.debug("Etap", "Konwersja heksadecymalny → binarny (bytes)")
                         encrypted_data = bytes.fromhex(self.input_text.toPlainText())
-                        self.logger.success("Parsowanie", f"Rozmiar: {len(encrypted_data)} bajtów")
+                        self.logger.success("Parsowanie", f"Rozmiar binarny: {len(encrypted_data)} bajtów")
                     except Exception as e:
                         self.logger.error("Błąd parsowania", str(e))
                         raise
                     
-                    self.logger.info("Deszyfrowanie", "Trwa...")
+                    self.logger.info("Deszyfrowanie", f"RSA {len(bin(n))-2}-bitowe")
                     decrypted = self.current_algorithm.decrypt(encrypted_data, key)
                     self.logger.success("Deszyfrowanie", f"Ukończone, rozmiar: {len(decrypted)} bajtów")
                     
                     self.input_text.clear()
                     decrypted_text = decrypted.decode('utf-8', errors='replace')
                     self.output_text.setPlainText(decrypted_text)
+                    self.logger.info("Konwersja wyniku", "Bytes → UTF-8 tekst")
                     self.logger.debug("Tekst wyjściowy", f"Rozmiar: {len(decrypted_text)} znaków")
+                    self.logger.set_result(decrypted_text)
                     self.statusBar().showMessage("Deszyfrowano!")
                     
                 elif mode == "Podpisz / Weryfikuj":
@@ -729,7 +794,12 @@ class MainWindow(QMainWindow):
                         return
                     try:
                         key = self._parse_rsa_key_safe(public_key_str)
-                        self.logger.success("Klucz publiczny", "Załadowany")
+                        e, n = key
+                        key_bits = len(bin(n)) - 2
+                        self.logger.success("Klucz publiczny", f"Załadowany, e={e}")
+                        self.logger.debug("Rozmiar modułu (bity)", str(key_bits))
+                        # Szczegółowe logowanie RSA
+                        self.logger.log_rsa_details(key_bits, is_encrypt=True)
                     except ValueError as e:
                         QMessageBox.warning(self, "Błąd", f"Błąd parsowania klucza: {str(e)}")
                         return
@@ -749,9 +819,10 @@ class MainWindow(QMainWindow):
                             pass
                     
                     try:
-                        self.logger.info("Parsowanie podpisu", "Konwersja hex -> bytes")
+                        self.logger.info("Parsowanie podpisu", f"Rozmiar: {len(self.input_text.toPlainText())} znaków")
+                        self.logger.debug("Etap", "Konwersja heksadecymalny → binarny (bytes)")
                         signed_data = bytes.fromhex(self.input_text.toPlainText().strip())
-                        self.logger.success("Parsowanie podpisu", f"Rozmiar: {len(signed_data)} bajtów")
+                        self.logger.success("Parsowanie podpisu", f"Rozmiar binarny: {len(signed_data)} bajtów")
                     except Exception:
                         self.logger.error("Błąd parsowania podpisu", "Nieprawidłowy format (oczekiwany hex)")
                         QMessageBox.warning(self, "Błąd", "Nieprawidłowy format podpisu (oczekiwany hex).")
@@ -768,25 +839,33 @@ class MainWindow(QMainWindow):
                         except Exception:
                             pass
 
-                    self.logger.info("Weryfikacja podpisu", f"Sprawdzam {len(candidates)} reprezentacje danych")
+                    self.logger.info("Weryfikacja podpisu", f"Próbuję {len(candidates)} reprezentacji danych")
                     tried_methods = []
                     verified = False
                     which = None
                     for name, candidate in candidates:
                         try:
+                            self.logger.debug("Próba weryfikacji", f"Metoda: {name}")
                             if self.current_algorithm.verify(candidate, signed_data, key):
                                 verified = True
                                 which = name
-                                self.logger.success("Weryfikacja", f"Podpis prawidłowy (metoda: {which})")
+                                self.logger.success("Weryfikacja", f"✓ Podpis PRAWIDŁOWY!")
+                                self.logger.debug("Metoda", f"Dane w formacie: {which}")
                                 break
                         except Exception:
                             tried_methods.append(name)
 
                     if verified:
+                        self.logger.success("KONIEC", "Weryfikacja podpisu zakończona pomyślnie!")
+                        self.logger.set_result(f"Podpis PRAWIDŁOWY - Metoda: {which}")
+                        self.refresh_logs_view()
                         QMessageBox.information(self, "Sukces", f"✓ Podpis jest prawidłowy! (metoda: {which})")
                         self.statusBar().showMessage("Podpis zweryfikowany!")
                     else:
-                        self.logger.error("Weryfikacja", "Podpis NIEPRAWIDŁOWY")
+                        self.logger.error("Weryfikacja", "✗ Podpis NIEPRAWIDŁOWY - nie pasuje!")
+                        self.logger.warning("KONIEC", "Weryfikacja nieudana!")
+                        self.logger.set_error()
+                        self.refresh_logs_view()
                         QMessageBox.warning(self, "Błąd", "✗ Podpis jest NIEPRAWIDŁOWY!\n\n"
                                             "Wskazówka: Upewnij się, że:\n"
                                             "- Używasz klucza publicznego osoby, która podpisała dane\n"
@@ -796,24 +875,54 @@ class MainWindow(QMainWindow):
             else:
                 key = self._get_text_key()
                 options = {}
+                ciphertext_input = self.input_text.toPlainText()
+                
                 if "AES" in algorithm_name:
                     key_size_str = self.aes_key_size_combo.currentText().split(' ')[0].replace('AES-', '')
                     key_size = int(key_size_str) // 8
                     options['key_size'] = key_size
-                    self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size_str} bitów")
+                    self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size_str} bitów ({key_size} bajtów)")
+                    self.logger.debug("Tryb operacji", "ECB (Electronic Codebook)")
+                    # Szczegółowe logowanie AES
+                    self.logger.log_aes_details(len(ciphertext_input), key_size, is_encrypt=False)
+                elif "Cezara" in algorithm_name:
+                    self.logger.info("Klucz deszyfrowania", f"Przesunięcie: {key} pozycji")
+                    # Szczegółowe logowanie Cezara
+                    self.logger.log_caesar_details(ciphertext_input, key, is_encrypt=False)
+                elif "Vigenere" in algorithm_name:
+                    self.logger.info("Klucz deszyfrowania", f"Klucz: '{key}' (długość: {len(str(key))})")
+                    # Szczegółowe logowanie Vigenere'a
+                    self.logger.log_vigenere_details(ciphertext_input, str(key), is_encrypt=False)
+                elif "Beaufort" in algorithm_name:
+                    self.logger.info("Klucz deszyfrowania", f"Klucz: '{key}' (długość: {len(str(key))})")
+                    # Szczegółowe logowanie Beauforta
+                    self.logger.log_beaufort_details(ciphertext_input, str(key), is_encrypt=False)
+                elif "ChaCha" in algorithm_name:
+                    self.logger.info("Klucz deszyfrowania", f"Długość: {len(str(key))} znaków")
+                    # Szczegółowe logowanie ChaCha20
+                    self.logger.log_chacha20_details(len(ciphertext_input), key_size=32, is_encrypt=False)
+                else:
+                    self.logger.info("Klucz deszyfrowania", f"Długość: {len(str(key))} znaków")
                 
-                self.logger.info("Deszyfrowanie tekstu", "Trwa...")
-                decrypted = self.current_algorithm.decrypt(self.input_text.toPlainText(), key, **options)
-                self.logger.success("Deszyfrowanie", f"Ukończone, rozmiar: {len(decrypted)} znaków")
+                self.logger.log_input_preview(ciphertext_input, label="Tekst szyfrowany")
+                self.logger.info("Deszyfrowanie tekstu", f"Algorytm: {algorithm_name}", is_step=True)
+                decrypted = self.current_algorithm.decrypt(ciphertext_input, key, **options)
+                self.logger.success("Deszyfrowanie", f"Ukończone, rozmiar wyniku: {len(decrypted)} znaków")
+                
+                compression_ratio = (len(decrypted) / len(ciphertext_input)) * 100 if ciphertext_input else 0
+                self.logger.debug("Stosunek rozmiaru", f"{compression_ratio:.1f}% rozmiaru szyfrowanego")
                 
                 self.input_text.clear()
                 self.output_text.setPlainText(decrypted)
+                self.logger.debug("Format wyjścia", "Tekst odszyfrowany")
+                self.logger.set_result(decrypted)
                 self.statusBar().showMessage("Deszyfrowano!")
             
             self.logger.success("KONIEC", "Operacja deszyfrowania zakończona pomyślnie!")
             self.refresh_logs_view()
             
         except Exception as e:
+            self.logger.set_error()
             self.logger.error("Błąd deszyfrowania", str(e))
             self.refresh_logs_view()
             QMessageBox.critical(self, "Błąd", f"Deszyfrowanie: {str(e)}")
@@ -864,7 +973,7 @@ class MainWindow(QMainWindow):
                     self.logger.info("Wczytywanie pliku", "Trwa...")
                     with open(file_path, 'rb') as f:
                         content = f.read()
-                    self.logger.success("Wczytywanie", f"Rozmiar: {len(content)} bajtów")
+                    self.logger.log_input_preview(content, label="Plik wejściowy")
                     
                     self.logger.info("Szyfrowanie", "Trwa...")
                     encrypted = alg.encrypt(content, key)
@@ -875,6 +984,7 @@ class MainWindow(QMainWindow):
                     with open(output_path, 'wb') as f:
                         f.write(encrypted)
                     self.logger.success("Zapis", "Plik zapisany")
+                    self.logger.set_result(f"Plik: {os.path.basename(output_path)} ({len(encrypted)} bajtów)")
                     
                     QMessageBox.information(self, "Sukces", "Plik zaszyfrowany do .enc")
                     self.statusBar().showMessage("Plik zaszyfrowany!")
@@ -897,7 +1007,7 @@ class MainWindow(QMainWindow):
                     self.logger.info("Wczytywanie pliku", "Trwa...")
                     with open(file_path, 'rb') as f:
                         content = f.read()
-                    self.logger.success("Wczytywanie", f"Rozmiar: {len(content)} bajtów")
+                    self.logger.log_input_preview(content, label="Plik wejściowy")
                     
                     self.logger.info("Podpisywanie", "Trwa...")
                     signed = alg.sign(content, key)
@@ -908,6 +1018,7 @@ class MainWindow(QMainWindow):
                     with open(output_path, 'wb') as f:
                         f.write(signed)
                     self.logger.success("Zapis", "Podpis zapisany")
+                    self.logger.set_result(f"Podpis: {os.path.basename(output_path)} ({len(signed)} bajtów)")
                     
                     QMessageBox.information(self, "Sukces", "Plik podpisany do .sig")
                     self.statusBar().showMessage("Plik podpisany!")
@@ -915,7 +1026,7 @@ class MainWindow(QMainWindow):
                 self.logger.info("Wczytywanie pliku", "Trwa...")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                self.logger.success("Wczytywanie", f"Rozmiar: {len(content)} znaków")
+                self.logger.log_input_preview(content, label="Plik wejściowy")
                 
                 key = self._get_file_key()
                 options = {}
@@ -924,8 +1035,22 @@ class MainWindow(QMainWindow):
                     key_size = int(key_size_str)
                     options['key_size'] = key_size // 8
                     self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size} bitów")
+                    # Szczegółowe logowanie AES
+                    self.logger.log_aes_details(len(content), key_size // 8, is_encrypt=True)
+                elif "Cezara" in alg.name:
+                    self.logger.info("Klucz", f"Przesunięcie: {key} pozycji")
+                    self.logger.log_caesar_details(content, key, is_encrypt=True)
+                elif "Vigenere" in alg.name:
+                    self.logger.info("Klucz", f"Klucz: '{key}'")
+                    self.logger.log_vigenere_details(content, str(key), is_encrypt=True)
+                elif "Beaufort" in alg.name:
+                    self.logger.info("Klucz", f"Klucz: '{key}'")
+                    self.logger.log_beaufort_details(content, str(key), is_encrypt=True)
+                elif "ChaCha" in alg.name:
+                    self.logger.info("Klucz", f"Długość: {len(str(key))} znaków")
+                    self.logger.log_chacha20_details(len(content), key_size=32, is_encrypt=True)
                 
-                self.logger.info("Szyfrowanie", "Trwa...")
+                self.logger.info("Szyfrowanie", "Trwa...", is_step=True)
                 encrypted = alg.encrypt(content, key, **options)
                 self.logger.success("Szyfrowanie", f"Ukończone, rozmiar wyjścia: {len(encrypted)} znaków")
                 
@@ -933,6 +1058,7 @@ class MainWindow(QMainWindow):
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(encrypted)
                 self.logger.success("Zapis", "Plik zaszyfrowany")
+                self.logger.set_result(f"Plik zaszyfrowany ({len(encrypted)} znaków)")
                 
                 QMessageBox.information(self, "Sukces", "Plik zaszyfrowany.")
                 self.statusBar().showMessage("Plik zaszyfrowany!")
@@ -941,6 +1067,7 @@ class MainWindow(QMainWindow):
             self.refresh_logs_view()
             
         except Exception as e:
+            self.logger.set_error()
             self.logger.error("Błąd szyfrowania pliku", str(e))
             self.refresh_logs_view()
             QMessageBox.critical(self, "Błąd", f"Szyfrowanie pliku: {str(e)}")
@@ -979,7 +1106,7 @@ class MainWindow(QMainWindow):
                     self.logger.info("Wczytywanie zaszyfrowanego pliku", "Trwa...")
                     with open(file_path, 'rb') as f:
                         content = f.read()
-                    self.logger.success("Wczytywanie", f"Rozmiar: {len(content)} bajtów")
+                    self.logger.log_input_preview(content, label="Plik zaszyfrowany")
                     
                     self.logger.info("Deszyfrowanie", "Trwa...")
                     decrypted = alg.decrypt(content, key)
@@ -993,6 +1120,7 @@ class MainWindow(QMainWindow):
                     with open(output_path, 'wb') as f:
                         f.write(decrypted)
                     self.logger.success("Zapis", "Plik deszyfrowany")
+                    self.logger.set_result(f"Plik: {os.path.basename(output_path)} ({len(decrypted)} bajtów)")
                     
                     QMessageBox.information(self, "Sukces", f"Plik deszyfrowany do {os.path.basename(output_path)}!")
                     self.statusBar().showMessage("Plik deszyfrowany!")
@@ -1053,12 +1181,14 @@ class MainWindow(QMainWindow):
                     if is_valid:
                         self.logger.success("Weryfikacja", "✓ PRAWIDŁOWY")
                         self.logger.success("KONIEC", "Weryfikacja podpisu zakończona pomyślnie!")
+                        self.logger.set_result(f"Podpis PRAWIDŁOWY - Plik: {os.path.basename(data_path)}")
                         self.refresh_logs_view()
                         QMessageBox.information(self, "Sukces", f"✓ Podpis pliku {os.path.basename(data_path)} jest PRAWIDŁOWY!")
                         self.statusBar().showMessage("Podpis zweryfikowany!")
                     else:
                         self.logger.error("Weryfikacja", "✗ NIEPRAWIDŁOWY")
                         self.logger.warning("KONIEC", "Podpis nie pasuje do danych!")
+                        self.logger.set_error()
                         self.refresh_logs_view()
                         QMessageBox.critical(self, "Błąd", f"✗ Podpis pliku {os.path.basename(data_path)} jest NIEPRAWIDŁOWY!\n\n"
                                             "Wskazówka: Upewnij się, że:\n"
@@ -1069,7 +1199,7 @@ class MainWindow(QMainWindow):
                 self.logger.info("Wczytywanie zaszyfrowanego pliku", f"Plik: {os.path.basename(self.file_path_input.text())}")
                 with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:
                     content = f.read()
-                self.logger.success("Wczytywanie", f"Rozmiar: {len(content)} znaków")
+                self.logger.log_input_preview(content, label="Plik zaszyfrowany")
                 
                 key = self._get_file_key()
                 options = {}
@@ -1078,8 +1208,22 @@ class MainWindow(QMainWindow):
                     key_size = int(key_size_str) // 8
                     options['key_size'] = key_size
                     self.logger.info("Parametry AES", f"Rozmiar klucza: {key_size_str} bitów")
+                    # Szczegółowe logowanie AES
+                    self.logger.log_aes_details(len(content), key_size, is_encrypt=False)
+                elif "Cezara" in alg.name:
+                    self.logger.info("Klucz", f"Przesunięcie: {key} pozycji")
+                    self.logger.log_caesar_details(content, key, is_encrypt=False)
+                elif "Vigenere" in alg.name:
+                    self.logger.info("Klucz", f"Klucz: '{key}'")
+                    self.logger.log_vigenere_details(content, str(key), is_encrypt=False)
+                elif "Beaufort" in alg.name:
+                    self.logger.info("Klucz", f"Klucz: '{key}'")
+                    self.logger.log_beaufort_details(content, str(key), is_encrypt=False)
+                elif "ChaCha" in alg.name:
+                    self.logger.info("Klucz", f"Długość: {len(str(key))} znaków")
+                    self.logger.log_chacha20_details(len(content), key_size=32, is_encrypt=False)
                 
-                self.logger.info("Deszyfrowanie", "Trwa...")
+                self.logger.info("Deszyfrowanie", "Trwa...", is_step=True)
                 decrypted = alg.decrypt(content, key, **options)
                 self.logger.success("Deszyfrowanie", f"Ukończone, rozmiar: {len(decrypted)} znaków")
                 
@@ -1087,12 +1231,14 @@ class MainWindow(QMainWindow):
                 with open(self.file_path_input.text(), 'w', encoding='utf-8') as f:
                     f.write(decrypted)
                 self.logger.success("Zapis", "Plik odszyfrowany")
+                self.logger.set_result(f"Plik odszyfrowany ({len(decrypted)} znaków)")
                 self.logger.success("KONIEC", "Deszyfrowanie pliku zakończone pomyślnie!")
                 self.refresh_logs_view()
                 
                 QMessageBox.information(self, "Sukces", "Plik deszyfrowany!")
                 self.statusBar().showMessage("Plik deszyfrowany!")
         except Exception as e:
+            self.logger.set_error()
             self.logger.error("KONIEC", f"Błąd! {str(e)}")
             self.refresh_logs_view()
             QMessageBox.critical(self, "Błąd", f"Deszyfrowanie pliku: {str(e)}")

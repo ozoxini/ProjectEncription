@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         
         # Pasek statusu
         self.statusBar().showMessage("Gotowy")
-        version_label = QLabel("v.1.3.5a")
+        version_label = QLabel("v.1.5a")
         version_label.setObjectName("versionLabel")
         self.statusBar().addPermanentWidget(version_label)
         
@@ -418,6 +418,8 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
         layout.setContentsMargins(0, 20, 0, 0)
         
+       
+        
         # --- SEKCJA 1: Generacja Pary Kluczy ---
         section1_title = QLabel("1. Moja Para Kluczy")
         section1_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
@@ -436,10 +438,9 @@ class MainWindow(QMainWindow):
         pub_label = QLabel("Klucz publiczny (Base64):")
         pub_label.setFont(QFont("Segoe UI", 9))
         self.ecdh_public_key_text = QTextEdit()
-        self.ecdh_public_key_text.setReadOnly(True)
         self.ecdh_public_key_text.setMaximumHeight(60)
         self.ecdh_public_key_text.setFont(QFont("Courier New", 8))
-        self.ecdh_public_key_text.setPlaceholderText("Wciśnij 'Generuj Nową Parę Kluczy' aby wyświetlić")
+        self.ecdh_public_key_text.setPlaceholderText("Wciśnij 'Generuj Nową Parę Kluczy' aby wyświetlić (lub wklej tutaj dla testu)")
         section1_layout.addWidget(pub_label)
         section1_layout.addWidget(self.ecdh_public_key_text)
         
@@ -452,10 +453,9 @@ class MainWindow(QMainWindow):
         priv_label = QLabel("Klucz prywatny (HEX) - PRZECHOWUJ W TAJNOŚCI:")
         priv_label.setFont(QFont("Segoe UI", 9))
         self.ecdh_private_key_text = QTextEdit()
-        self.ecdh_private_key_text.setReadOnly(True)
         self.ecdh_private_key_text.setMaximumHeight(60)
         self.ecdh_private_key_text.setFont(QFont("Courier New", 8))
-        self.ecdh_private_key_text.setPlaceholderText("Wyświetlony tutaj - NIGDY nie udostępniaj!")
+        self.ecdh_private_key_text.setPlaceholderText("Wyświetlony tutaj - NIGDY nie udostępniaj! (edytowalne do testów)")
         section1_layout.addWidget(priv_label)
         section1_layout.addWidget(self.ecdh_private_key_text)
         
@@ -465,6 +465,15 @@ class MainWindow(QMainWindow):
         section2_title = QLabel("2. Klucz Publiczny Drugiej Osoby")
         section2_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
         layout.addWidget(section2_title)
+        
+        section2_info = QLabel(
+            "Każdy publiczny klucz jest INNY (bo zawiera inny losowy punkt na krzywej). "
+            "To jest normalne i bezpieczne! Wklej klucz drugiej osoby poniżej."
+        )
+        section2_info.setFont(QFont("Segoe UI", 8))
+        section2_info.setStyleSheet("color: #aaaaaa;")
+        section2_info.setWordWrap(True)
+        layout.addWidget(section2_info)
         
         section2_card = QGroupBox()
         section2_layout = QVBoxLayout(section2_card)
@@ -639,7 +648,15 @@ class MainWindow(QMainWindow):
             self.logger.log_ecdh_details("Wspólny sekret")
             
             self.ecdh_status_label.setText("✓ Wspólny sekret obliczony! Możesz teraz szyfrować wiadomości.")
-            QMessageBox.information(self, "Sukces", "Wspólny sekret obliczony!\n\nMożesz teraz szyfrować i deszyfrować wiadomości.")
+            QMessageBox.information(
+                self, 
+                "Sukces", 
+                "✓ Wspólny sekret obliczony!\n\n"
+                "Twój sekret (hex):\n" + shared_secret.hex()[:60] + "...\n\n"
+                "WAŻNE: Druga osoba powinna mieć IDENTYCZNY sekret!\n"
+                "Jeśli sekrety się nie zgadzają, coś poszło nie tak.\n\n"
+                "Możesz teraz szyfrować i deszyfrować wiadomości."
+            )
             
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Błąd podczas obliczania sekretu:\n{str(e)}")

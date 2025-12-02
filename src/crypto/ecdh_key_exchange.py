@@ -166,7 +166,10 @@ class ECDHKeyExchange(BaseCryptoAlgorithm):
         plaintext_bytes = self._ctr_encrypt(core, ciphertext, expanded_key, nonce)
         
         # 5. Konwertuj na tekst
-        plaintext = plaintext_bytes.decode('utf-8')
+        try:
+            plaintext = plaintext_bytes.decode('utf-8')
+        except UnicodeDecodeError as e:
+            raise ValueError(f"Błąd dekodowania UTF-8: {str(e)}. Sprawdź czy wklejłeś prawidłową zaszyfrowaną wiadomość i czy sekrety się zgadzają!")
         return plaintext
     
     # ========== TRYB CTR (AES) ==========

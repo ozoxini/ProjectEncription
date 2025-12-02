@@ -6,7 +6,7 @@ from tkinter import EW
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QStackedWidget, QLabel, QPushButton, QTextEdit, 
                             QLineEdit, QComboBox, QSpinBox, QFileDialog, 
-                            QMessageBox, QGroupBox, QFormLayout, QSplitter)
+                            QMessageBox, QGroupBox, QFormLayout, QSplitter, QScrollArea)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 import os
@@ -14,6 +14,7 @@ import ast
 
 from ..crypto.algorithm_manager import AlgorithmManager
 from .operation_logger import OperationLogger
+from ..crypto.ecdh_key_exchange import ECDHKeyExchange
 
 
 class MainWindow(QMainWindow):
@@ -24,6 +25,9 @@ class MainWindow(QMainWindow):
         self.algorithm_manager = AlgorithmManager()
         self.current_algorithm = None
         self.logger = OperationLogger()  # Logger do śledzenia operacji
+        self.ecdh = ECDHKeyExchange()  # Instancja ECDH
+        self.ecdh_keypair = None  # Przechowuje wygenerowaną parę
+        self.ecdh_shared_secret = None  # Przechowuje wspólny sekret
 
         # Kontrolki specyficzne dla RSA (przeniesione z init_ui)
         self.rsa_group_box = QGroupBox("Opcje RSA")
@@ -42,6 +46,7 @@ class MainWindow(QMainWindow):
         public_key_label = QLabel("Klucz publiczny:")
         self.public_key_text = QTextEdit()
         self.public_key_text.setPlaceholderText("(e, n)")
+        self.public_key_text.setMaximumHeight(60)
         public_key_layout.addWidget(public_key_label)
         public_key_layout.addWidget(self.public_key_text)
         
@@ -49,6 +54,7 @@ class MainWindow(QMainWindow):
         private_key_label = QLabel("Klucz prywatny:")
         self.private_key_text = QTextEdit()
         self.private_key_text.setPlaceholderText("(d, n)")
+        self.private_key_text.setMaximumHeight(60)
         private_key_layout.addWidget(private_key_label)
         private_key_layout.addWidget(self.private_key_text)
         
@@ -92,12 +98,17 @@ class MainWindow(QMainWindow):
         self.btn_plik.setCheckable(True)
         
         self.btn_logi = QPushButton("Logi")
-        self.btn_logi.setObjectName("segmentedButtonRight")
+        self.btn_logi.setObjectName("segmentedButtonMiddle")
         self.btn_logi.setCheckable(True)
+        
+        self.btn_wymiana_kluczy = QPushButton("Wymiana Kluczy")
+        self.btn_wymiana_kluczy.setObjectName("segmentedButtonRight")
+        self.btn_wymiana_kluczy.setCheckable(True)
         
         segmented_control_layout.addWidget(self.btn_tekst)
         segmented_control_layout.addWidget(self.btn_plik)
         segmented_control_layout.addWidget(self.btn_logi)
+        segmented_control_layout.addWidget(self.btn_wymiana_kluczy)
         segmented_control_layout.addStretch(1)
         main_layout.addLayout(segmented_control_layout)
         
@@ -106,12 +117,14 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.create_text_view())
         self.stacked_widget.addWidget(self.create_file_view())
         self.stacked_widget.addWidget(self.create_logs_view())
+        self.stacked_widget.addWidget(self.create_ecdh_view())
         main_layout.addWidget(self.stacked_widget)
         
         # Połączenia sygnałów
         self.btn_tekst.clicked.connect(lambda: self.switch_view(0))
         self.btn_plik.clicked.connect(lambda: self.switch_view(1))
         self.btn_logi.clicked.connect(lambda: self.switch_view(2))
+        self.btn_wymiana_kluczy.clicked.connect(lambda: self.switch_view(3))
         
         # Połączenia przycisków
         self.generate_keys_btn.clicked.connect(self.generate_rsa_keys)
@@ -138,17 +151,23 @@ class MainWindow(QMainWindow):
         self.btn_tekst.setChecked(index == 0)
         self.btn_plik.setChecked(index == 1)
         self.btn_logi.setChecked(index == 2)
+        self.btn_wymiana_kluczy.setChecked(index == 3)
         
         # Odśwież logi gdy przełączysz na zakładkę Logi
         if index == 2:
             self.refresh_logs_view()
+        
+        # Odśwież ECDH gdy przełączysz na zakładkę Wymiana Kluczy
+        if index == 3:
+            self.refresh_ecdh_view()
 
     def create_text_view(self):
         """Tworzy widok ("kartę") do szyfrowania tekstu"""
         view = QWidget()
         layout = QVBoxLayout(view)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
         layout.setContentsMargins(0, 20, 0, 0)
+        layout.setAlignment(Qt.AlignTop)
         
         # Karta z ustawieniami
         control_card = QGroupBox()
@@ -226,13 +245,14 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.clear_btn)
         layout.addLayout(button_layout)
         
+        layout.addStretch(1)
         return view
 
     def create_file_view(self):
         """Tworzy widok ("kartę") do szyfrowania plików"""
         view = QWidget()
         layout = QVBoxLayout(view)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
         layout.setContentsMargins(0, 20, 0, 0)
         layout.setAlignment(Qt.AlignTop)
 
@@ -312,7 +332,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(file_card)
         
         layout.addStretch(1)
-
         return view
 
     def create_logs_view(self):
@@ -388,6 +407,305 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Sukces", f"Logi wyeksportowane do:\n{file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Błąd", f"Błąd eksportu logów:\n{str(e)}")
+
+    def create_ecdh_view(self):
+        """Tworzy widok do wymiany kluczy ECDH"""
+        # ScrollArea dla całej karty
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
+        layout.setSpacing(12)
+        layout.setContentsMargins(0, 20, 0, 0)
+        
+        # --- SEKCJA 1: Generacja Pary Kluczy ---
+        section1_title = QLabel("1. Moja Para Kluczy")
+        section1_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        layout.addWidget(section1_title)
+        
+        section1_card = QGroupBox()
+        section1_layout = QVBoxLayout(section1_card)
+        section1_layout.setSpacing(8)
+        
+        self.ecdh_generate_btn = QPushButton("Generuj Nową Parę Kluczy")
+        self.ecdh_generate_btn.setObjectName("primaryButton")
+        self.ecdh_generate_btn.clicked.connect(self.generate_ecdh_keypair)
+        section1_layout.addWidget(self.ecdh_generate_btn)
+        
+        # Wiersz: Klucz publiczny
+        pub_label = QLabel("Klucz publiczny (Base64):")
+        pub_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_public_key_text = QTextEdit()
+        self.ecdh_public_key_text.setReadOnly(True)
+        self.ecdh_public_key_text.setMaximumHeight(60)
+        self.ecdh_public_key_text.setFont(QFont("Courier New", 8))
+        self.ecdh_public_key_text.setPlaceholderText("Wciśnij 'Generuj Nową Parę Kluczy' aby wyświetlić")
+        section1_layout.addWidget(pub_label)
+        section1_layout.addWidget(self.ecdh_public_key_text)
+        
+        pub_copy_btn = QPushButton("Skopiuj Klucz Publiczny")
+        pub_copy_btn.setObjectName("secondaryButton")
+        pub_copy_btn.clicked.connect(lambda: self.copy_to_clipboard(self.ecdh_public_key_text.toPlainText(), "Klucz publiczny"))
+        section1_layout.addWidget(pub_copy_btn)
+        
+        # Wiersz: Klucz prywatny
+        priv_label = QLabel("Klucz prywatny (HEX) - PRZECHOWUJ W TAJNOŚCI:")
+        priv_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_private_key_text = QTextEdit()
+        self.ecdh_private_key_text.setReadOnly(True)
+        self.ecdh_private_key_text.setMaximumHeight(60)
+        self.ecdh_private_key_text.setFont(QFont("Courier New", 8))
+        self.ecdh_private_key_text.setPlaceholderText("Wyświetlony tutaj - NIGDY nie udostępniaj!")
+        section1_layout.addWidget(priv_label)
+        section1_layout.addWidget(self.ecdh_private_key_text)
+        
+        layout.addWidget(section1_card)
+        
+        # --- SEKCJA 2: Klucz Drugiej Osoby ---
+        section2_title = QLabel("2. Klucz Publiczny Drugiej Osoby")
+        section2_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        layout.addWidget(section2_title)
+        
+        section2_card = QGroupBox()
+        section2_layout = QVBoxLayout(section2_card)
+        section2_layout.setSpacing(8)
+        
+        their_pub_label = QLabel("Wklej tutaj klucz publiczny drugiej osoby (Base64):")
+        their_pub_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_their_public_text = QTextEdit()
+        self.ecdh_their_public_text.setMaximumHeight(60)
+        self.ecdh_their_public_text.setFont(QFont("Courier New", 8))
+        self.ecdh_their_public_text.setPlaceholderText("Paste Base64 encoded public key here...")
+        section2_layout.addWidget(their_pub_label)
+        section2_layout.addWidget(self.ecdh_their_public_text)
+        
+        self.ecdh_calculate_secret_btn = QPushButton("Oblicz Wspólny Sekret")
+        self.ecdh_calculate_secret_btn.setObjectName("primaryButton")
+        self.ecdh_calculate_secret_btn.clicked.connect(self.calculate_ecdh_secret)
+        section2_layout.addWidget(self.ecdh_calculate_secret_btn)
+        
+        layout.addWidget(section2_card)
+        
+        # --- SEKCJA 3: Szyfrowanie Wiadomości ---
+        section3_title = QLabel("3. Szyfruj Wiadomość")
+        section3_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        layout.addWidget(section3_title)
+        
+        section3_card = QGroupBox()
+        section3_layout = QVBoxLayout(section3_card)
+        section3_layout.setSpacing(8)
+        
+        plaintext_label = QLabel("Wiadomość do zaszyfrowania:")
+        plaintext_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_plaintext_input = QTextEdit()
+        self.ecdh_plaintext_input.setMaximumHeight(60)
+        self.ecdh_plaintext_input.setPlaceholderText("Wpisz wiadomość...")
+        section3_layout.addWidget(plaintext_label)
+        section3_layout.addWidget(self.ecdh_plaintext_input)
+        
+        self.ecdh_encrypt_btn = QPushButton("Zaszyfruj")
+        self.ecdh_encrypt_btn.setObjectName("primaryButton")
+        self.ecdh_encrypt_btn.clicked.connect(self.encrypt_ecdh_message)
+        section3_layout.addWidget(self.ecdh_encrypt_btn)
+        
+        ciphertext_label = QLabel("Zaszyfrowana wiadomość (Base64):")
+        ciphertext_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_ciphertext_output = QTextEdit()
+        self.ecdh_ciphertext_output.setReadOnly(True)
+        self.ecdh_ciphertext_output.setMaximumHeight(60)
+        self.ecdh_ciphertext_output.setFont(QFont("Courier New", 8))
+        self.ecdh_ciphertext_output.setPlaceholderText("Będzie wyświetlona tutaj po szyfrowaniu")
+        section3_layout.addWidget(ciphertext_label)
+        section3_layout.addWidget(self.ecdh_ciphertext_output)
+        
+        cipher_copy_btn = QPushButton("Skopiuj Zaszyfrowaną Wiadomość")
+        cipher_copy_btn.setObjectName("secondaryButton")
+        cipher_copy_btn.clicked.connect(lambda: self.copy_to_clipboard(self.ecdh_ciphertext_output.toPlainText(), "Zaszyfrowana wiadomość"))
+        section3_layout.addWidget(cipher_copy_btn)
+        
+        layout.addWidget(section3_card)
+        
+        # --- SEKCJA 4: Deszyfrowanie Wiadomości ---
+        section4_title = QLabel("4. Deszyfruj Wiadomość")
+        section4_title.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        layout.addWidget(section4_title)
+        
+        section4_card = QGroupBox()
+        section4_layout = QVBoxLayout(section4_card)
+        section4_layout.setSpacing(8)
+        
+        encrypted_label = QLabel("Zaszyfrowana wiadomość od drugiej osoby (Base64):")
+        encrypted_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_encrypted_input = QTextEdit()
+        self.ecdh_encrypted_input.setMaximumHeight(60)
+        self.ecdh_encrypted_input.setFont(QFont("Courier New", 8))
+        self.ecdh_encrypted_input.setPlaceholderText("Paste encrypted message here...")
+        section4_layout.addWidget(encrypted_label)
+        section4_layout.addWidget(self.ecdh_encrypted_input)
+        
+        self.ecdh_decrypt_btn = QPushButton("Deszyfruj")
+        self.ecdh_decrypt_btn.setObjectName("primaryButton")
+        self.ecdh_decrypt_btn.clicked.connect(self.decrypt_ecdh_message)
+        section4_layout.addWidget(self.ecdh_decrypt_btn)
+        
+        decrypted_label = QLabel("Odszyfrowana wiadomość:")
+        decrypted_label.setFont(QFont("Segoe UI", 9))
+        self.ecdh_decrypted_output = QTextEdit()
+        self.ecdh_decrypted_output.setReadOnly(True)
+        self.ecdh_decrypted_output.setMaximumHeight(60)
+        self.ecdh_decrypted_output.setFont(QFont("Courier New", 8))
+        self.ecdh_decrypted_output.setPlaceholderText("Będzie wyświetlona tutaj po deszyfrowaniu")
+        section4_layout.addWidget(decrypted_label)
+        section4_layout.addWidget(self.ecdh_decrypted_output)
+        
+        layout.addWidget(section4_card)
+        
+        # Status info
+        self.ecdh_status_label = QLabel("Status: Gotowy do generacji pary kluczy")
+        self.ecdh_status_label.setFont(QFont("Segoe UI", 8))
+        self.ecdh_status_label.setStyleSheet("color: #888888;")
+        layout.addWidget(self.ecdh_status_label)
+        
+        layout.addStretch(1)
+        scroll_area.setWidget(scroll_widget)
+        return scroll_area
+
+    def refresh_ecdh_view(self):
+        """Odświeża widok ECDH"""
+        pass
+
+    def copy_to_clipboard(self, text, label="Tekst"):
+        """Kopiuje tekst do schowka"""
+        if not text:
+            QMessageBox.warning(self, "Info", f"Brak zawartości do skopiowania!")
+            return
+        
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self.ecdh_status_label.setText(f"✓ {label} skopiowany do schowka")
+
+    def generate_ecdh_keypair(self):
+        """Generuje nową parę kluczy ECDH"""
+        try:
+            self.logger.clear()
+            self.logger.set_algorithm("ECDH", None)
+            self.logger.info("Generacja pary kluczy ECDH", "Rozpoczęcie", is_step=True)
+            
+            # Generuj parę
+            keypair = self.ecdh.generate_keypair()
+            self.ecdh_keypair = keypair
+            
+            # Wyświetl klucze
+            self.ecdh_public_key_text.setPlainText(keypair['public_key_b64'])
+            self.ecdh_private_key_text.setPlainText(keypair['private_key_hex'])
+            
+            self.logger.success("Klucz publiczny", keypair['public_key_b64'][:40] + "...", is_step=True)
+            self.logger.debug("Klucz prywatny (HEX)", keypair['private_key_hex'][:40] + "...")
+            self.logger.log_ecdh_details("Generacja pary")
+            
+            self.ecdh_status_label.setText("✓ Para kluczy wygenerowana! Teraz podziel się kluczem publicznym.")
+            QMessageBox.information(self, "Sukces", "Para kluczy wygenerowana.\n\nPodziel się swoim kluczem publicznym z drugą osobą!")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd", f"Błąd podczas generacji pary:\n{str(e)}")
+            self.ecdh_status_label.setText(f"✗ Błąd: {str(e)}")
+
+    def calculate_ecdh_secret(self):
+        """Oblicza wspólny sekret ECDH"""
+        try:
+            if not self.ecdh_keypair:
+                QMessageBox.warning(self, "Info", "Najpierw generuj swoją parę kluczy!")
+                return
+            
+            their_public_b64 = self.ecdh_their_public_text.toPlainText().strip()
+            if not their_public_b64:
+                QMessageBox.warning(self, "Info", "Wklej klucz publiczny drugiej osoby!")
+                return
+            
+            self.logger.clear()
+            self.logger.set_algorithm("ECDH", None)
+            self.logger.info("Obliczanie wspólnego sekretu", "Rozpoczęcie", is_step=True)
+            
+            # Oblicz sekret
+            shared_secret = self.ecdh.compute_shared_secret(
+                self.ecdh_keypair['private_key_int'],
+                their_public_b64
+            )
+            self.ecdh_shared_secret = shared_secret
+            
+            self.logger.success("Wspólny sekret", shared_secret.hex()[:40] + "...", is_step=True)
+            self.logger.debug("Rozmiar sekretu (bajty)", str(len(shared_secret)))
+            self.logger.log_ecdh_details("Wspólny sekret")
+            
+            self.ecdh_status_label.setText("✓ Wspólny sekret obliczony! Możesz teraz szyfrować wiadomości.")
+            QMessageBox.information(self, "Sukces", "Wspólny sekret obliczony!\n\nMożesz teraz szyfrować i deszyfrować wiadomości.")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd", f"Błąd podczas obliczania sekretu:\n{str(e)}")
+            self.ecdh_status_label.setText(f"✗ Błąd: {str(e)}")
+
+    def encrypt_ecdh_message(self):
+        """Szyfruje wiadomość za pomocą wspólnego sekretu ECDH"""
+        try:
+            if not self.ecdh_shared_secret:
+                QMessageBox.warning(self, "Info", "Najpierw oblicz wspólny sekret!")
+                return
+            
+            plaintext = self.ecdh_plaintext_input.toPlainText()
+            if not plaintext:
+                QMessageBox.warning(self, "Info", "Wpisz wiadomość do zaszyfrowania!")
+                return
+            
+            self.logger.clear()
+            self.logger.set_algorithm("ECDH", None)
+            self.logger.info("Szyfrowanie wiadomości", f"Rozmiar: {len(plaintext)} znaków", is_step=True)
+            
+            # Szyfruj
+            ciphertext_b64 = self.ecdh.encrypt_message(plaintext, self.ecdh_shared_secret)
+            
+            self.ecdh_ciphertext_output.setPlainText(ciphertext_b64)
+            
+            self.logger.success("Wiadomość zaszyfrowana", ciphertext_b64[:40] + "...", is_step=True)
+            self.logger.debug("Rozmiar zaszyfrowany (Base64)", str(len(ciphertext_b64)))
+            self.logger.log_ecdh_details("Szyfrowanie")
+            
+            self.ecdh_status_label.setText("✓ Wiadomość zaszyfrowana! Skopiuj i wyślij drugiej osobie.")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd", f"Błąd podczas szyfrowania:\n{str(e)}")
+            self.ecdh_status_label.setText(f"✗ Błąd: {str(e)}")
+
+    def decrypt_ecdh_message(self):
+        """Deszyfruje wiadomość za pomocą wspólnego sekretu ECDH"""
+        try:
+            if not self.ecdh_shared_secret:
+                QMessageBox.warning(self, "Info", "Najpierw oblicz wspólny sekret!")
+                return
+            
+            ciphertext_b64 = self.ecdh_encrypted_input.toPlainText().strip()
+            if not ciphertext_b64:
+                QMessageBox.warning(self, "Info", "Wklej zaszyfrowaną wiadomość!")
+                return
+            
+            self.logger.clear()
+            self.logger.set_algorithm("ECDH", None)
+            self.logger.info("Deszyfrowanie wiadomości", "Rozpoczęcie", is_step=True)
+            
+            # Deszyfruj
+            plaintext = self.ecdh.decrypt_message(ciphertext_b64, self.ecdh_shared_secret)
+            
+            self.ecdh_decrypted_output.setPlainText(plaintext)
+            
+            self.logger.success("Wiadomość odszyfrowana", f"{len(plaintext)} znaków", is_step=True)
+            self.logger.info("Treść", plaintext)
+            self.logger.log_ecdh_details("Deszyfrowanie")
+            
+            self.ecdh_status_label.setText("✓ Wiadomość odszyfrowana!")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd", f"Błąd podczas deszyfrowania:\n{str(e)}")
+            self.ecdh_status_label.setText(f"✗ Błąd: {str(e)}")
 
     def apply_studio_style(self):
         """Aplikuje profesjonalny, stonowany styl 'Studio UI'"""

@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5a] - 02.12.2025
+
+- **ECDH** - implementacja modułu bez importowania dodatkowych bibliotek, słuzącego do bezpiecznego generowania tajnych kluczy i ich wymiany, ktore mozna sobie przekazywać na "odleglość".
+
 ## [1.3.5a] - 18.11.2025
 
 - **Debugowanie** - dodanie dodatkowej zakładki z debugowaniem, która umozliwia zapisywanie i podgląd logów z kazdej operacji szyfrowania i deszyfrowania, która zawiera dodatkowy opis

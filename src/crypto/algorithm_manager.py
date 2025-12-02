@@ -9,6 +9,7 @@ from .aes.cbc_method import CbcMethod
 from .aes.ctr_method import CtrMethod
 from .aes.gcm_method import GcmMethod
 from .rsa_cipher import RsaCipher
+from .ecdh_key_exchange import ECDHKeyExchange
 
 class AlgorithmManager:
     def __init__(self):
@@ -25,6 +26,7 @@ class AlgorithmManager:
         self.register_algorithm(CtrMethod())
         self.register_algorithm(GcmMethod())
         self.register_algorithm(RsaCipher())
+        self.register_algorithm(ECDHKeyExchange())
     
     def register_algorithm(self, algorithm: BaseCryptoAlgorithm):
         self._algorithms[algorithm.name] = algorithm

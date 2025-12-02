@@ -428,4 +428,37 @@ class OperationLogger:
         self.info("Algorytm", "ChaCha20 - szyfrowanie strumieniowe")
         self.debug("Kroki na blok", "20 rund (stąd nazwa: ChaCha20)")
         self.debug("Operacje", "Dodawanie modulo 2^32 + rotacja + XOR (ARX)")
+    
+    def log_ecdh_details(self, operation: str) -> None:
+        """
+        Loguje szczegóły operacji ECDH
+        
+        operation: "Generacja pary" / "Wymiana kluczy" / "Wspólny sekret" / 
+                  "Szyfrowanie" / "Deszyfrowanie"
+        """
+        if operation == "Generacja pary":
+            self.info("Operacja ECDH", "Generacja pary kluczy (P-256, 256 bitów)", is_step=True)
+            self.debug("Matematyka", "256-bitowy klucz prywatny × punkt G = klucz publiczny")
+            self.debug("Format", "Punkt: 0x04 || x(32B) || y(32B) → Base64 (do wysłania)")
+            
+        elif operation == "Wymiana kluczy":
+            self.info("Operacja ECDH", "Wymiana kluczy publicznych między osobami", is_step=True)
+            self.debug("Transport", "Base64 string - łatwy do kopiowania i wysyłania")
+            self.debug("Bezpieczeństwo", "Klucz publiczny można wysyłać otwarcie")
+            
+        elif operation == "Wspólny sekret":
+            self.info("Operacja ECDH", "Obliczenie wspólnego sekretu", is_step=True)
+            self.debug("Matematyka", "Twój_prywatny × ich_publiczny = wspólny_punkt")
+            self.debug("Haszowanie", "SHA-256(wspólny_punkt.x) → 256-bitowy sekret")
+            self.debug("Kluczowe", "Oba boki obliczają identyczny sekret mimo braku komunikacji bezpośredniej!")
+            
+        elif operation == "Szyfrowanie":
+            self.info("Operacja ECDH", "Szyfrowanie wiadomości wspólnym sekretem", is_step=True)
+            self.debug("Metoda", "AES-256-CTR (256-bitowy klucz = wspólny sekret)")
+            self.debug("Format", "Base64(nonce_16B || ciphertext) - do wysłania")
+            
+        elif operation == "Deszyfrowanie":
+            self.info("Operacja ECDH", "Deszyfrowanie wiadomości wspólnym sekretem", is_step=True)
+            self.debug("Metoda", "AES-256-CTR (tryb symetryczny)")
+            self.debug("Weryfikacja", "Tylko osoba z właściwym sekretem może odszyfrować")
 

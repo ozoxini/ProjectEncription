@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         
         # Pasek statusu
         self.statusBar().showMessage("Gotowy")
-        version_label = QLabel("v.1.5a")
+        version_label = QLabel("v.1.6a")
         version_label.setObjectName("versionLabel")
         self.statusBar().addPermanentWidget(version_label)
         
@@ -906,11 +906,19 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'rsa_group_box'):
             self.rsa_group_box.setVisible(is_rsa)
         
-        # Ukryj standardowe pole klucza dla RSA
+        is_sha256 = "SHA-256" in name
+        
+        # Ukryj standardowe pole klucza dla RSA i SHA-256
         if hasattr(self, 'key_stack'):
-            self.key_stack.setVisible(not is_rsa)
+            self.key_stack.setVisible(not is_rsa and not is_sha256)
         if hasattr(self, 'file_key_stack'):
-            self.file_key_stack.setVisible(not is_rsa)
+            self.file_key_stack.setVisible(not is_rsa and not is_sha256)
+        
+        # Ukryj przycisk "Deszyfruj" dla SHA-256 (bo to funkcja skrótu, nie szyfr)
+        if hasattr(self, 'decrypt_btn'):
+            self.decrypt_btn.setVisible(not is_sha256)
+        if hasattr(self, 'decrypt_file_btn'):
+            self.decrypt_file_btn.setVisible(not is_sha256)
 
         self.statusBar().showMessage(f"Aktywny: {name}")
     
@@ -1011,6 +1019,22 @@ class MainWindow(QMainWindow):
                     self.logger.debug("Rozmiar heksadecymalny", f"{len(signed_hex)} znaków")
                     self.logger.set_result(signed_hex)
                     self.statusBar().showMessage("Podpisano!")
+            elif "SHA-256" in algorithm_name:
+                # SHA-256 to funkcja skrótu - nie wymaga klucza
+                self.logger.info("Typ algorytmu", "Funkcja skrótu kryptograficznego (Hash)", is_step=True)
+                self.logger.info("Właściwości SHA-256", "Wejście: dowolna długość, Wyjście: 256 bitów (32 bajty)", is_step=True)
+                self.logger.info("Przygotowanie tekstu", f"Rozmiar oryginalny: {len(plaintext)} znaków", is_step=True)
+                self.logger.debug("Kodowanie tekstu", "UTF-8")
+                
+                self.logger.info("Obliczanie skrótu", "SHA-256 (Secure Hash Algorithm)", is_step=True)
+                hash_result = self.current_algorithm.encrypt(plaintext, None)
+                self.logger.success("Skrót obliczony", f"256 bitów = 32 bajty = 64 znaki (heks)", is_step=True)
+                
+                self.output_text.setPlainText(hash_result)
+                self.logger.debug("Format wyjścia", "Heksadecymalny (BASE16)")
+                self.logger.info("Skrót SHA-256", hash_result, is_step=True)
+                self.logger.set_result(hash_result)
+                self.statusBar().showMessage("Skrót SHA-256 obliczony!")
             else:
                 key = self._get_text_key()
                 options = {}
@@ -1207,6 +1231,24 @@ class MainWindow(QMainWindow):
                                             "- Dane nie zostały zmienione od czasu podpisania\n"
                                             "- Podpis jest w formacie hex (wklejony do pola Input)")
                         self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
+            elif "SHA-256" in algorithm_name:
+                # SHA-256 to funkcja skrótu - nie ma deszyfrowania
+                self.logger.info("Typ algorytmu", "Funkcja skrótu kryptograficznego (Hash)", is_step=True)
+                self.logger.warning("Operacja", "SHA-256 to funkcja skrótu - przycisk 'Deszyfruj' powinien być ukryty")
+                self.logger.info("Instrukcja", "Aby obliczyć skrót, użyj przycisku 'Szyfruj'")
+                
+                QMessageBox.information(self, "SHA-256 - Tylko obliczanie skrótu", 
+                    "SHA-256 to funkcja SKRÓTU, a nie szyfr!\n\n"
+                    "Przycisk 'Deszyfruj' jest niedostępny dla SHA-256\n\n"
+                    "Aby obliczyć skrót:\n"
+                    "1. Wpisz tekst w polu Input\n"
+                    "2. Kliknij 'Szyfruj'\n"
+                    "3. Skrót SHA-256 pojawi się w polu Output\n\n"
+                    "SHA-256 jest NIEODWRACALNA - nie można\n"
+                    "odzyskać oryginalnych danych ze skrótu!")
+                
+                self.statusBar().showMessage("SHA-256: Użyj przycisku 'Szyfruj'")
+                self.refresh_logs_view()
             else:
                 key = self._get_text_key()
                 options = {}
@@ -1357,6 +1399,29 @@ class MainWindow(QMainWindow):
                     
                     QMessageBox.information(self, "Sukces", "Plik podpisany do .sig")
                     self.statusBar().showMessage("Plik podpisany!")
+            elif "SHA-256" in alg.name:
+                # SHA-256 do pliku - obliczanie skrótu
+                self.logger.info("Typ algorytmu", "Funkcja skrótu kryptograficznego (Hash)", is_step=True)
+                self.logger.info("Wczytywanie pliku", "Trwa...")
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                self.logger.info("Parametry", f"Rozmiar pliku: {len(content)} bajtów")
+                self.logger.log_input_preview(content, label="Plik wejściowy")
+                
+                self.logger.info("Obliczanie skrótu SHA-256", "Trwa...", is_step=True)
+                hash_hex = alg.encrypt(content.decode('utf-8', errors='replace'), None)
+                self.logger.success("Skrót obliczony", f"256 bitów = 32 bajty = 64 znaki (heks)")
+                
+                output_path = file_path + ".sha256"
+                self.logger.info("Zapis skrótu", f"Do: {os.path.basename(output_path)}")
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(hash_hex)
+                self.logger.success("Zapis", "Skrót zapisany")
+                self.logger.info("Skrót SHA-256", hash_hex, is_step=True)
+                self.logger.set_result(f"Skrót: {os.path.basename(output_path)}")
+                
+                QMessageBox.information(self, "Sukces", "Skrót SHA-256 zapisany do .sha256")
+                self.statusBar().showMessage("Skrót SHA-256 obliczony!")
             else:
                 self.logger.info("Wczytywanie pliku", "Trwa...")
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -1530,6 +1595,93 @@ class MainWindow(QMainWindow):
                                             "- Używasz klucza publicznego osoby, która podpisała plik\n"
                                             "- Plik nie został zmieniony od czasu podpisania")
                         self.statusBar().showMessage("Błąd: Podpis NIEPRAWIDŁOWY!")
+            elif "SHA-256" in alg.name:
+                # SHA-256 do weryfikacji pliku - porównanie skrótów
+                self.logger.info("Typ algorytmu", "Funkcja skrótu kryptograficznego (Hash)", is_step=True)
+                self.logger.info("Operacja", "Weryfikacja integralności pliku poprzez porównanie skrótów SHA-256")
+                
+                file_path = self.file_path_input.text()
+                sha256_path = file_path + ".sha256"
+                
+                # Sprawdzamy czy istnieje plik .sha256
+                if not os.path.exists(sha256_path):
+                    self.logger.error("Plik skrótu", f"Nie znaleziono pliku {os.path.basename(sha256_path)}")
+                    QMessageBox.warning(self, "Błąd", 
+                        f"Nie znaleziono pliku skrótu: {os.path.basename(sha256_path)}\n\n"
+                        "Aby zweryfikować plik:\n"
+                        "1. Wciśnij 'Szyfruj' aby obliczyć skrót SHA-256\n"
+                        "2. Zostanie utworzony plik .sha256\n"
+                        "3. Następnie możesz weryfikować integral ność")
+                    self.statusBar().showMessage("SHA-256: Brak pliku skrótu")
+                    self.refresh_logs_view()
+                    return
+                
+                # Wczytaj zapisany skrót
+                self.logger.info("Wczytywanie zapisanego skrótu", f"Z: {os.path.basename(sha256_path)}")
+                with open(sha256_path, 'r', encoding='utf-8') as f:
+                    saved_hash = f.read().strip()
+                self.logger.success("Wczytywanie skrótu", f"Rozmiar: {len(saved_hash)} znaków")
+                
+                # Wczytaj plik i oblicz jego skrót
+                self.logger.info("Wczytywanie pliku", f"Z: {os.path.basename(file_path)}")
+                with open(file_path, 'rb') as f:
+                    file_content = f.read()
+                self.logger.success("Wczytywanie pliku", f"Rozmiar: {len(file_content)} bajtów")
+                
+                self.logger.info("Obliczanie skrótu SHA-256", "Trwa...", is_step=True)
+                current_hash = alg.encrypt(file_content.decode('utf-8', errors='replace'), None)
+                self.logger.success("Skrót obliczony", "256 bitów = 64 znaki")
+                
+                # Porównaj skróty
+                self.logger.info("Porównanie skrótów", "Trwa...")
+                if current_hash == saved_hash:
+                    self.logger.success("Weryfikacja", "✓ SKRÓTY IDENTYCZNE - Plik nie zmienił się!")
+                    self.logger.success("KONIEC", "Weryfikacja SHA-256 zakończona pomyślnie - integralność OK!")
+                    self.logger.info("Skrót zapisany", saved_hash)
+                    self.logger.info("Skrót aktualny", current_hash)
+                    self.logger.set_result("✓ Plik nie zmienił się - integralność potwierdzona")
+                    self.refresh_logs_view()
+                    
+                    QMessageBox.information(self, "Sukces - Weryfikacja SHA-256", 
+                        f"✓ SKRÓTY IDENTYCZNE!\n\n"
+                        f"Plik: {os.path.basename(file_path)}\n"
+                        f"Status: NIE ZMIENIŁ SIĘ\n\n"
+                        f"Skrót SHA-256:\n{current_hash}")
+                    self.statusBar().showMessage("✓ SHA-256: Plik zweryfikowany - integralność OK")
+                else:
+                    self.logger.error("Weryfikacja", "✗ SKRÓTY RÓŻNE - Plik został zmieniony!")
+                    self.logger.error("KONIEC", "Weryfikacja SHA-256 nieudana - integralność ZAGROŻONA!")
+                    self.logger.warning("Skrót zapisany", saved_hash)
+                    self.logger.warning("Skrót aktualny", current_hash)
+                    self.logger.set_error()
+                    self.refresh_logs_view()
+                    
+                    QMessageBox.critical(self, "Błąd - Weryfikacja SHA-256", 
+                        f"✗ SKRÓTY RÓŻNE!\n\n"
+                        f"Plik: {os.path.basename(file_path)}\n"
+                        f"Status: ZMIENIŁ SIĘ\n\n"
+                        f"Skrót zapisany:\n{saved_hash}\n\n"
+                        f"Skrót aktualny:\n{current_hash}\n\n"
+                        "⚠️  Plik został zmodyfikowany od czasu utworzenia skrótu!")
+                    self.statusBar().showMessage("✗ SHA-256: Plik zmienił się - integralność zagrożona!")
+            elif "SHA-256" in alg.name:
+                # SHA-256 to funkcja skrótu - nie ma deszyfrowania
+                self.logger.info("Typ algorytmu", "Funkcja skrótu kryptograficznego (Hash)", is_step=True)
+                self.logger.warning("Operacja", "SHA-256 to funkcja skrótu - przycisk 'Deszyfruj' powinien być ukryty")
+                self.logger.info("Instrukcja", "Aby obliczyć skrót pliku, użyj przycisku 'Szyfruj'")
+                
+                QMessageBox.information(self, "SHA-256 - Tylko obliczanie skrótu", 
+                    "SHA-256 to funkcja SKRÓTU, a nie szyfr!\n\n"
+                    "Przycisk 'Deszyfruj' jest niedostępny dla SHA-256\n\n"
+                    "Aby obliczyć skrót pliku:\n"
+                    "1. Wybierz plik\n"
+                    "2. Kliknij 'Szyfruj'\n"
+                    "3. Skrót SHA-256 zostanie zapisany w pliku .sha256\n\n"
+                    "SHA-256 jest NIEODWRACALNA - nie można\n"
+                    "odzyskać oryginalnych danych ze skrótu!")
+                
+                self.statusBar().showMessage("SHA-256: Użyj przycisku 'Szyfruj'")
+                self.refresh_logs_view()
             else:
                 self.logger.info("Wczytywanie zaszyfrowanego pliku", f"Plik: {os.path.basename(self.file_path_input.text())}")
                 with open(self.file_path_input.text(), 'r', encoding='utf-8') as f:

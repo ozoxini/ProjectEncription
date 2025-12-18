@@ -2,7 +2,6 @@
 Główne okno aplikacji kryptograficznej
 """
 
-from tkinter import EW
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QStackedWidget, QLabel, QPushButton, QTextEdit, 
                             QLineEdit, QComboBox, QSpinBox, QFileDialog, 
@@ -102,13 +101,18 @@ class MainWindow(QMainWindow):
         self.btn_logi.setCheckable(True)
         
         self.btn_wymiana_kluczy = QPushButton("Wymiana Kluczy")
-        self.btn_wymiana_kluczy.setObjectName("segmentedButtonRight")
+        self.btn_wymiana_kluczy.setObjectName("segmentedButtonMiddle")
         self.btn_wymiana_kluczy.setCheckable(True)
+        
+        self.btn_podpis = QPushButton("Podpis")
+        self.btn_podpis.setObjectName("segmentedButtonRight")
+        self.btn_podpis.setCheckable(True)
         
         segmented_control_layout.addWidget(self.btn_tekst)
         segmented_control_layout.addWidget(self.btn_plik)
         segmented_control_layout.addWidget(self.btn_logi)
         segmented_control_layout.addWidget(self.btn_wymiana_kluczy)
+        segmented_control_layout.addWidget(self.btn_podpis)
         segmented_control_layout.addStretch(1)
         main_layout.addLayout(segmented_control_layout)
         
@@ -118,6 +122,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.create_file_view())
         self.stacked_widget.addWidget(self.create_logs_view())
         self.stacked_widget.addWidget(self.create_ecdh_view())
+        self.stacked_widget.addWidget(self.create_signature_view())
         main_layout.addWidget(self.stacked_widget)
         
         # Połączenia sygnałów
@@ -125,6 +130,7 @@ class MainWindow(QMainWindow):
         self.btn_plik.clicked.connect(lambda: self.switch_view(1))
         self.btn_logi.clicked.connect(lambda: self.switch_view(2))
         self.btn_wymiana_kluczy.clicked.connect(lambda: self.switch_view(3))
+        self.btn_podpis.clicked.connect(lambda: self.switch_view(4))
         
         # Połączenia przycisków
         self.generate_keys_btn.clicked.connect(self.generate_rsa_keys)
@@ -136,7 +142,7 @@ class MainWindow(QMainWindow):
         
         # Pasek statusu
         self.statusBar().showMessage("Gotowy")
-        version_label = QLabel("v.1.6a")
+        version_label = QLabel("v.1.8a")
         version_label.setObjectName("versionLabel")
         self.statusBar().addPermanentWidget(version_label)
         
@@ -152,6 +158,7 @@ class MainWindow(QMainWindow):
         self.btn_plik.setChecked(index == 1)
         self.btn_logi.setChecked(index == 2)
         self.btn_wymiana_kluczy.setChecked(index == 3)
+        self.btn_podpis.setChecked(index == 4)
         
         # Odśwież logi gdy przełączysz na zakładkę Logi
         if index == 2:
@@ -723,6 +730,231 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Błąd", f"Błąd podczas deszyfrowania:\n{str(e)}")
             self.ecdh_status_label.setText(f"✗ Błąd: {str(e)}")
+
+    def create_signature_view(self):
+        """Tworzy widok ("kartę") do podpisu cyfrowego"""
+        # ScrollArea dla całej karty
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        layout = QVBoxLayout(scroll_widget)
+        layout.setSpacing(20)
+        layout.setContentsMargins(0, 20, 0, 0)
+        
+        # Tytuł
+        title = QLabel("Podpis Cyfrowy (RSA)")
+        title.setFont(QFont("Segoe UI", 14, QFont.Bold))
+        layout.addWidget(title)
+
+        # --- SEKCJA: Podpisywanie ---
+        sign_group = QGroupBox("Generowanie Podpisu")
+        sign_layout = QVBoxLayout(sign_group)
+        sign_layout.setSpacing(12)
+
+        # Wybór pliku do podpisu
+        sign_file_layout = QHBoxLayout()
+        self.sign_file_path = QLineEdit()
+        self.sign_file_path.setPlaceholderText("Wybierz plik do podpisania...")
+        self.sign_file_path.setReadOnly(True)
+        sign_browse_btn = QPushButton("...")
+        sign_browse_btn.setFixedWidth(50)
+        sign_browse_btn.clicked.connect(lambda: self._browse_path(self.sign_file_path))
+        sign_file_layout.addWidget(self.sign_file_path)
+        sign_file_layout.addWidget(sign_browse_btn)
+        sign_layout.addRow("Plik:", sign_file_layout) if hasattr(sign_layout, 'addRow') else sign_layout.addWidget(QLabel("Plik do podpisu:"))
+        if not hasattr(sign_layout, 'addRow'): sign_layout.addLayout(sign_file_layout)
+
+        # Klucz prywatny do podpisu
+        sign_layout.addWidget(QLabel("Klucz prywatny (d, n):"))
+        self.sign_private_key = QTextEdit()
+        self.sign_private_key.setPlaceholderText("Wklej tutaj klucz prywatny (krotka lub format PEM)...")
+        self.sign_private_key.setMaximumHeight(60)
+        sign_layout.addWidget(self.sign_private_key)
+
+        # Przycisk Podpisz
+        self.btn_action_sign = QPushButton("Podpisz Plik")
+        self.btn_action_sign.setObjectName("primaryButton")
+        self.btn_action_sign.clicked.connect(self.sign_file_action)
+        sign_layout.addWidget(self.btn_action_sign)
+
+        layout.addWidget(sign_group)
+
+        # --- SEKCJA: Weryfikacja ---
+        verify_group = QGroupBox("Weryfikacja Podpisu")
+        verify_layout = QVBoxLayout(verify_group)
+        verify_layout.setSpacing(12)
+
+        # Wybór pliku oryginalnego
+        verify_data_layout = QHBoxLayout()
+        self.verify_data_path = QLineEdit()
+        self.verify_data_path.setPlaceholderText("Wybierz oryginalny plik (dane)...")
+        self.verify_data_path.setReadOnly(True)
+        verify_data_browse_btn = QPushButton("...")
+        verify_data_browse_btn.setFixedWidth(50)
+        verify_data_browse_btn.clicked.connect(lambda: self._browse_path(self.verify_data_path))
+        verify_data_layout.addWidget(self.verify_data_path)
+        verify_data_layout.addWidget(verify_data_browse_btn)
+        
+        verify_layout.addWidget(QLabel("Oryginalny plik:"))
+        verify_layout.addLayout(verify_data_layout)
+
+        # Wybór pliku podpisu (.sig)
+        verify_sig_layout = QHBoxLayout()
+        self.verify_sig_path = QLineEdit()
+        self.verify_sig_path.setPlaceholderText("Wybierz plik podpisu (.sig)...")
+        self.verify_sig_path.setReadOnly(True)
+        verify_sig_browse_btn = QPushButton("...")
+        verify_sig_browse_btn.setFixedWidth(50)
+        verify_sig_browse_btn.clicked.connect(lambda: self._browse_path(self.verify_sig_path))
+        verify_sig_layout.addWidget(self.verify_sig_path)
+        verify_sig_layout.addWidget(verify_sig_browse_btn)
+
+        verify_layout.addWidget(QLabel("Plik podpisu (.sig):"))
+        verify_layout.addLayout(verify_sig_layout)
+
+        # Klucz publiczny do weryfikacji
+        verify_layout.addWidget(QLabel("Klucz publiczny (e, n):"))
+        self.verify_public_key = QTextEdit()
+        self.verify_public_key.setPlaceholderText("Wklej tutaj klucz publiczny...")
+        self.verify_public_key.setMaximumHeight(60)
+        verify_layout.addWidget(self.verify_public_key)
+
+        # Przycisk Weryfikuj
+        self.btn_action_verify = QPushButton("Weryfikuj Podpis")
+        self.btn_action_verify.setObjectName("primaryButton")
+        self.btn_action_verify.clicked.connect(self.verify_file_action)
+        verify_layout.addWidget(self.btn_action_verify)
+
+        layout.addWidget(verify_group)
+        layout.addStretch(1)
+
+        scroll_area.setWidget(scroll_widget)
+        return scroll_area
+
+    def _browse_path(self, line_edit):
+        """Pomocnicza metoda do wyboru pliku dla konkretnego pola"""
+        path, _ = QFileDialog.getOpenFileName(self, "Wybierz plik", "", "Wszystkie pliki (*)")
+        if path:
+            line_edit.setText(path)
+
+    def sign_file_action(self):
+        """Logika podpisywania pliku z dedykowanego widoku"""
+        try:
+            # 1. Pobierz ścieżki i klucz
+            file_path = self.sign_file_path.text()
+            key_str = self.sign_private_key.toPlainText()
+
+            if not file_path or not os.path.exists(file_path):
+                QMessageBox.warning(self, "Błąd", "Wybierz istniejący plik do podpisania!")
+                return
+            if not key_str:
+                QMessageBox.warning(self, "Błąd", "Podaj klucz prywatny RSA!")
+                return
+
+            # 2. Parsuj klucz
+            try:
+                key = self._parse_rsa_key_safe(key_str)
+                d, n = key
+            except ValueError as e:
+                QMessageBox.warning(self, "Błąd", f"Nieprawidłowy klucz prywatny: {str(e)}")
+                return
+
+            # 3. Logowanie startu
+            self.logger.clear()
+            self.logger.set_algorithm("RSA", "Podpis Cyfrowy")
+            self.logger.info("Rozpoczęcie podpisywania", f"Plik: {os.path.basename(file_path)}", is_step=True)
+            self.logger.info("Klucz", f"Prywatny, n={str(n)[:30]}...")
+
+            # 4. Wczytaj dane
+            with open(file_path, 'rb') as f:
+                data = f.read()
+            self.logger.info("Wczytano dane", f"Rozmiar: {len(data)} bajtów")
+
+            # 5. Podpisz (używamy istniejącego RsaCipher)
+            rsa_alg = self.algorithm_manager.get_algorithm("RSA")
+            signature = rsa_alg.sign(data, key)
+            self.logger.success("Podpis wygenerowany", f"Rozmiar podpisu: {len(signature)} bajtów", is_step=True)
+
+            # 6. Zapisz .sig
+            sig_path = file_path + ".sig"
+            with open(sig_path, 'wb') as f:
+                f.write(signature)
+            
+            self.logger.info("Zapis podpisu", f"Plik: {os.path.basename(sig_path)}")
+            self.logger.success("KONIEC", "Proces podpisywania zakończony pomyślnie")
+            
+            # 7. UI Feedback
+            QMessageBox.information(self, "Sukces", f"Podpisano pomyślnie!\nUtworzono plik:\n{sig_path}")
+            self.statusBar().showMessage("Plik podpisany!")
+            self.refresh_logs_view()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd krytyczny", str(e))
+            self.logger.error("Błąd", str(e))
+
+    def verify_file_action(self):
+        """Logika weryfikacji podpisu z dedykowanego widoku"""
+        try:
+            # 1. Pobierz ścieżki i klucz
+            data_path = self.verify_data_path.text()
+            sig_path = self.verify_sig_path.text()
+            key_str = self.verify_public_key.toPlainText()
+
+            if not data_path or not os.path.exists(data_path):
+                QMessageBox.warning(self, "Błąd", "Wybierz oryginalny plik z danymi!")
+                return
+            if not sig_path or not os.path.exists(sig_path):
+                QMessageBox.warning(self, "Błąd", "Wybierz plik podpisu (.sig)!")
+                return
+            if not key_str:
+                QMessageBox.warning(self, "Błąd", "Podaj klucz publiczny RSA!")
+                return
+
+            # 2. Parsuj klucz
+            try:
+                key = self._parse_rsa_key_safe(key_str)
+                # Automatyczna poprawka jeśli podano klucz prywatny (opcjonalne, ale pomocne)
+                first, n = key
+                if first > 65537 and first < n:
+                     key = self._extract_public_from_private_key(key)
+            except ValueError as e:
+                QMessageBox.warning(self, "Błąd", f"Nieprawidłowy klucz publiczny: {str(e)}")
+                return
+
+            # 3. Logowanie startu
+            self.logger.clear()
+            self.logger.set_algorithm("RSA", "Weryfikacja Podpisu")
+            self.logger.info("Rozpoczęcie weryfikacji", f"Dane: {os.path.basename(data_path)}", is_step=True)
+            self.logger.info("Podpis", f"Plik: {os.path.basename(sig_path)}")
+
+            # 4. Wczytaj pliki
+            with open(data_path, 'rb') as f:
+                data = f.read()
+            with open(sig_path, 'rb') as f:
+                signature = f.read()
+            
+            self.logger.debug("Wczytano", f"Dane: {len(data)} b, Podpis: {len(signature)} b")
+
+            # 5. Weryfikuj e rsa_alg
+            rsa_alg = self.algorithm_manager.get_algorithm("RSA")
+            is_valid = rsa_alg.verify(data, signature, key)
+
+            if is_valid:
+                self.logger.success("Wynik Weryfikacji", "PRAWIDŁOWY (VALID)", is_step=True)
+                self.logger.success("KONIEC", "Podpis jest autentyczny.")
+                QMessageBox.information(self, "Wynik Weryfikacji", "✅ PODPIS PRAWIDŁOWY\n\nPlik nie został zmodyfikowany i pochodzi od właściciela klucza.")
+                self.statusBar().showMessage("Podpis PRAWIDŁOWY")
+            else:
+                self.logger.error("Wynik Weryfikacji", "NIEPRAWIDŁOWY (INVALID)", is_step=True)
+                self.logger.warning("Przyczyna", "Niezgodność skrótu lub błędny klucz")
+                QMessageBox.warning(self, "Wynik Weryfikacji", "❌ PODPIS NIEPRAWIDŁOWY\n\nDane mogły zostać zmienione lub użyto złego klucza.")
+                self.statusBar().showMessage("Podpis NIEPRAWIDŁOWY")
+            
+            self.refresh_logs_view()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Błąd krytyczny", str(e))
+            self.logger.error("Błąd", str(e))
 
     def apply_studio_style(self):
         """Aplikuje profesjonalny, stonowany styl 'Studio UI'"""

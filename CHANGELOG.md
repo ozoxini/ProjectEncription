@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.8a] - 18.12.2025
+
+- **Cyfrowy podpis** - implementacja podpisu cyfrowego z wykorzystaniem klucza RSA.
+
 ## [1.6a] - 09.12.2025
 
 - **SHA256** - dodanie hashowania SHA256 - "szyfrowanie" działa tylko w jedną strone.
